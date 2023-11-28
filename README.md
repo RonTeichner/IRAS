@@ -1,4 +1,5 @@
-# IRAS
-Code for the paper Identifying Regulation with Adversarial Surrogate.
+# IRAS & IDRAS
+Code for the papers Identifying Regulation with Adversarial Surrogate (IRAS), Identifying Dynamic Regulation with Adversarial Surrogate (IDRAS)
 
-The code is at [IRAS.ipynb](IRAS.ipynb). It is recommended to open it in Colab to have in interactive experience.
+The IRAS code is at [IRAS.ipynb](IRAS.ipynb). It is recommended to open it in Colab to have in interactive experience.
+The IDRAS code is at IDRAS_Feynman.ipynb, IDRAS_Proteins.ipynb and IDRAS_for_Bacteria.ipynb. 
