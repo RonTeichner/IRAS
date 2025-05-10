@@ -4,7 +4,7 @@ Code for the papers Identifying Regulation with Adversarial Surrogate (IRAS), Id
 The IRAS code is at [IRAS.ipynb](IRAS.ipynb). It is recommended to open it in Colab to have in interactive experience.
 The IDRAS code is at IDRAS_Feynman.ipynb, IDRAS_Proteins.ipynb and IDRAS_for_Bacteria.ipynb. 
 
-To run IDRAS on different datasets, the reader should copy the code-blocks of IDRAS from one of these notebooks and call IDRAS using the command 
+To run IDRAS on different datasets, the reader should copy the code-blocks of IDRAS from the notebook [IDRAS_Feynman.ipynb](IDRAS_Feynman.ipynb) and call IDRAS using the command 
 ```
 // IRAS_train_script(observations, observations_tVec, V, nativeIRAS=False)
 ```
