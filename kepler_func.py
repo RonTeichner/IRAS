@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from astroquery.jplhorizons import Horizons
 import pandas as pd
 import numpy as np
+import torch
 from IRAS import IRAS_train_script
 from skimage import measure
 from sklearn.preprocessing import PolynomialFeatures
@@ -567,13 +568,20 @@ def runIRAS_onCoordinates(planet, true_anomaly_values_df, orbitalObs_df, orbital
              #ellipse_fit_1 = fit_ellipse(minCR_implicitPolyDict['singleBatch'], minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
              #ellipse_fit_2 = fit_ellipse(minCR_implicitPolyDict['singleBatch'], -minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
              
-             ellipse_fit_1 = fit_ellipse_analytic(minCR_implicitPolyDict['singleBatch'], minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
-             ellipse_fit_2 = fit_ellipse_analytic(minCR_implicitPolyDict['singleBatch'], -minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
+             ellipse_fit_1 = fit_ellipse_analytic(observations2IRAS, minCR_implicitPolyDict['singleBatch'], minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
+             ellipse_fit_2 = fit_ellipse_analytic(observations2IRAS, minCR_implicitPolyDict['singleBatch'], -minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
              
              if np.abs(ellipse_fit_1['corr']) > np.abs(ellipse_fit_2['corr']):
                  minCR_implicitPolyDict['ellipse_fit'] = ellipse_fit_1
              else:
                  minCR_implicitPolyDict['ellipse_fit'] = ellipse_fit_2
+                 
+             #theta = minCR_implicitPolyDict['ellipse_fit']['ellipse_rot_angle']
+             #R = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta),  np.cos(theta)]])
+             
+             #minCR_implicitPolyDict['ellipse_fit']['rotated_ellipse'] = fit_ellipse_analytic(torch.tensor((minCR_implicitPolyDict['singleBatch'] @ minCR_implicitPolyDict['singleBatch'].numpy()[:,:,:,None])[:,:,:,0]), minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
+             
+
     
     return {'planet': planet, 'observations2IRAS': observations2IRAS, 'degreeOfPolyFit': degreeOfPolyFit_pearson, 'implicitPolyDictList': minCR_implicitPolyDictList}
 
@@ -614,12 +622,43 @@ def extract_ellipse_parameters(coefficients):
 
 
 
-def fit_ellipse_analytic(singleBatch, combination, intercept, coefficients):
+def ellipse_axes_and_eccentricity(A, B, C, h, k):
+    """
+    Given the parameters of an ellipse in the form:
+    A(x−h)^2 + B(x−h)(y−k) + C(y−k)^2 = 1,
+    compute the semi-major axis, semi-minor axis, and eccentricity.
+    """
+    # Construct the matrix of the quadratic form
+    M = np.array([[A, B / 2],
+                  [B / 2, C]])
+
+    # Compute eigenvalues of the matrix
+    eigenvalues = np.linalg.eigvalsh(M)
+
+    # Sort eigenvalues to identify major and minor axes
+    lambda1, lambda2 = np.sort(eigenvalues)
+
+    # Semi-axes lengths
+    a = 1 / np.sqrt(lambda1)  # semi-major axis
+    b = 1 / np.sqrt(lambda2)  # semi-minor axis
+
+    # Ensure a is the larger axis
+    if a < b:
+        a, b = b, a
+
+    # Eccentricity
+    eccentricity = np.sqrt(1 - (b**2 / a**2))
+
+    return {'a':a, 'b':b, 'e':eccentricity}
+
+
+def fit_ellipse_analytic(observations2IRAS, singleBatch, combination, intercept, coefficients):
     #print(f'singleBatch.shape{singleBatch.shape}, combination.shape={combination.shape}')
-    singleBatch, combination = singleBatch.reshape(-1, 2).numpy(), combination.reshape(-1, 1).detach().numpy()
+    observations2IRAS, singleBatch, combination = observations2IRAS.reshape(-1, 2), singleBatch.reshape(-1, 2).numpy(), combination.reshape(-1, 1).detach().numpy()
     #print(f'singleBatch.shape{singleBatch.shape}, combination.shape={combination.shape}')
     
-    alpha, beta, l_data = singleBatch[:,0], singleBatch[:,1], combination[:,0]
+    alpha, beta = observations2IRAS[:,0], observations2IRAS[:,1]
+    alpha_noisy, beta_noisy, l_data = singleBatch[:,0], singleBatch[:,1], combination[:,0]
 
     # Design matrix for conic fitting: Ax^2 + Bxy + Cy^2 + Dx + Ey + F = 0
     D = np.vstack([alpha**2, alpha * beta, beta**2, alpha, beta, np.ones_like(alpha)]).T
@@ -654,11 +693,11 @@ def fit_ellipse_analytic(singleBatch, combination, intercept, coefficients):
     equation_str = ellipse_equation_string(optimized_params)
     
     # Predict l_data using the optimized parameters
-    predicted_l_data = ellipse_model(optimized_params, alpha, beta)
+    predicted_l_data = ellipse_model(optimized_params, alpha_noisy, beta_noisy)
     
     corr = pd.Series(predicted_l_data).corr(pd.Series(l_data))
     
-    return {'ellipse_eq': equation_str, 'corr': corr, 'ellipse_params': {'A':A, 'B':B, 'C':C, 'h':h, 'k':  k}, 'ellipse_rot_angle': clc_ellipse_theta(A,B,C)}
+    return {'ellipse_eq': equation_str, 'corr': corr, 'ellipse_params': {'A':A, 'B':B, 'C':C, 'h':h, 'k':  k}, 'ellipse_rot_angle': clc_ellipse_theta(A,B,C), 'axes_eccentricity': ellipse_axes_and_eccentricity(A, B, C, h, k)}
     
 def clc_ellipse_theta(A,B,C):
     # Compute tan(2θ)
@@ -709,7 +748,7 @@ def fit_ellipse(singleBatch, combination, intercept, coefficients):
     
     corr = pd.Series(predicted_l_data).corr(pd.Series(l_data))
     
-    return {'ellipse_eq': equation_str, 'corr': corr, 'ellipse_params': {'A':A_opt, 'B':B_opt, 'C':C_opt, 'h':h_opt, 'k':  k_opt}, 'ellipse_rot_angle': clc_ellipse_theta(A_opt,B_opt,C_opt)}
+    return {'ellipse_eq': equation_str, 'corr': corr, 'ellipse_params': {'A':A_opt, 'B':B_opt, 'C':C_opt, 'h':h_opt, 'k':  k_opt}, 'ellipse_rot_angle': clc_ellipse_theta(A_opt,B_opt,C_opt), 'axes_eccentricity': ellipse_axes_and_eccentricity(A_opt, B_opt, C_opt, h_opt, k_opt)}
 
 
 # Define the model function
