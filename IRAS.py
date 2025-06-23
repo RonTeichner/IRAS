@@ -13,6 +13,11 @@ Created on Thu Sep 28 17:31:44 2023
 
 @author: ron.teichner
 """
+import matplotlib.pyplot as plt
+
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import LinearRegression
+from sklearn.pipeline import make_pipeline
 
 import torch
 import torch.nn as nn
@@ -303,7 +308,7 @@ def shufflePlayer(combination, combinationOnNaiveShuffle, playerPerPatient):
 
   device = combination.device
   combination, combinationOnNaiveShuffle = combination.detach(), combinationOnNaiveShuffle.detach()
-  nBins = 250
+  nBins = 100
   shuffleFactor = int(combinationOnNaiveShuffle.shape[1]/combination.shape[1])
   baseLength = combination.shape[1]
   nSystems = combination.shape[0]
@@ -422,7 +427,7 @@ def shufflePlayer(combination, combinationOnNaiveShuffle, playerPerPatient):
 
   return combinationOnNaiveShuffle_selectionProb
 
-def CoefficientOfRegulation(combination, combinationOnNaiveShuffle, combinationOnNaiveShuffle_selectionProb, playerPerPatient):
+def CoefficientOfRegulation(combination, combinationOnNaiveShuffle, combinationOnNaiveShuffle_selectionProb, playerPerPatient, externalReport=True):
     #playerPerPatient = False
     shuffleFactor = int(combinationOnNaiveShuffle.shape[1]/combination.shape[1])
     baseLength = combination.shape[1]
@@ -458,7 +463,7 @@ def CoefficientOfRegulation(combination, combinationOnNaiveShuffle, combinationO
         selectedShuffleCombinations = torch.cat((selectedShuffleCombinations, selectedShuffleCombinationsSingleSystem))
         
         combinationOnNaiveShuffledStds[p] = systemShuffledCombination.std()
-        if selection.sum() < 5:
+        if selection.sum() < 5 and externalReport:
           print(f'no selections patient no. {p}')  
           combinationOnShuffledStds[p] = 0
         else:
@@ -578,9 +583,9 @@ def printShufflePlayerAndCombination(Data_init, Data_shuffle_init, std_data, mea
 import torch.optim as optim
 from IPython import display
 import pandas as pd
-%matplotlib inline
+#%matplotlib inline
 
-def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, observations_torch, observations_tVec_torch, hypotheses_regulations, learnThrProcess, playerPerPatient, optimizerStr, trainFlag, debugPreShuffle=False):
+def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, observations_torch, observations_tVec_torch, hypotheses_regulations_list, learnThrProcess, playerPerPatient, optimizerStr, trainFlag, debugPreShuffle=False, report=True, degreeOfPolyFit=2, titleStr='', previousComb=None):
     meanPredictionCorr = None
     dtIRAS_mode = epoch >= switch2dtIRASepoch
     combinationPlayer.detachMode = not(dtIRAS_mode)
@@ -604,7 +609,7 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
             
             combinationOnNaiveShuffle_selectionProb = shufflePlayer(combination_daughter_error, combination_shuffle_daughter_error, playerPerPatient=False) # all errors are with set-point 0
             # Coefficient of Regulation:
-            CR, CR_zeta1, nSelected = CoefficientOfRegulation(combination_daughter_error, combination_shuffle_daughter_error, combinationOnNaiveShuffle_selectionProb, playerPerPatient=False) # all errors are with set-point 0
+            CR, CR_zeta1, nSelected = CoefficientOfRegulation(combination_daughter_error, combination_shuffle_daughter_error, combinationOnNaiveShuffle_selectionProb, playerPerPatient=False, externalReport=report) # all errors are with set-point 0
             
             combinationOnNaiveShuffle_selectionProb_native = shufflePlayer(combination, combinationOnNaiveShuffle, playerPerPatient)
             
@@ -628,7 +633,7 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
     else:
         combinationOnNaiveShuffle_selectionProb = shufflePlayer(combination, combinationOnNaiveShuffle, playerPerPatient)
         # Coefficient of Regulation:
-        CR, CR_zeta1, nSelected = CoefficientOfRegulation(combination, combinationOnNaiveShuffle, combinationOnNaiveShuffle_selectionProb, playerPerPatient)
+        CR, CR_zeta1, nSelected = CoefficientOfRegulation(combination, combinationOnNaiveShuffle, combinationOnNaiveShuffle_selectionProb, playerPerPatient, report)
     
     if False:#learnThrProcess:
         plt.figure()
@@ -636,7 +641,7 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
         plt.show()
     
     # update the combination player as to minimize the CR:
-    if trainFlag:
+    if trainFlag and not bool(torch.isnan(CR).any()):
         if debugPreShuffle:
             daughterPrediction_VAR/combinationDaughterTuple[0].var().backward()
             if epoch == 0:
@@ -651,7 +656,9 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
             else:
                 CR.backward()
         optimizer.step()  # parameter update
-        scheduler.step()
+        #scheduler.step()
+        scheduler.step(CR_zeta1)#stdRatios[1].mean())
+        #print(f'epoch {epoch}: learning rate = {scheduler._last_lr[-1]}')
     
     if trainFlag:
         trainStr = 'train. '
@@ -692,56 +699,166 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
     else:
         daughterPrediction_str = ''
 
-    pearsonCorrs_ribosome, nErrorSqrtEnergy = np.zeros(combination.shape[0]), np.zeros(combination.shape[0])
-    for s in range(combination.shape[0]):
-        pearsonCorrs_ribosome[s] = pd.Series(combination[s].detach().cpu().flatten()).corr(pd.Series(hypotheses_regulations[s,:,0].flatten()))
-        comb = combination[s].detach().cpu().numpy().flatten()
-        hyp = hypotheses_regulations[s,:,0].flatten()
-        hyp = (hyp-hyp.mean())/hyp.std()
-        comb = (comb-comb.mean())/comb.std()
-        if pearsonCorrs_ribosome[s] < 0:
-            comb = -comb
-        nErrorSqrtEnergy[s] = (hyp-comb).std()
+    errorEnergyStr = ''
+    if not(hypotheses_regulations_list is None):
+        nErrorSqrtEnergy = np.zeros((len(hypotheses_regulations_list), combination.shape[0]))
+        pearsonCorrs_ribosome = np.zeros((len(hypotheses_regulations_list), combination.shape[0]))
+        for ih,hypotheses_regulations in enumerate(hypotheses_regulations_list):
+            for s in range(combination.shape[0]):
+                pearsonCorrs_ribosome[ih,s] = pd.Series(combination[s].detach().cpu().flatten()).corr(pd.Series(hypotheses_regulations[s,:,0].flatten()))
+                comb = combination[s].detach().cpu().numpy().flatten()
+                hyp = hypotheses_regulations[s,:,0].flatten()
+                hyp = (hyp-hyp.mean())/hyp.std()
+                comb = (comb-comb.mean())/comb.std()
+                if pearsonCorrs_ribosome[ih,s] < 0:
+                    comb = -comb
+                nErrorSqrtEnergy[ih,s] = (hyp-comb).std()
     
-    meanErrorEnergy_db = 20*np.log10(nErrorSqrtEnergy.mean())
-    errorEnergyStr = f'Val_error = {str(round(meanErrorEnergy_db, 2))} db'
-    if False:
-        plt.figure()
-        plt.scatter(x=combination[0].detach().cpu().flatten(), y=hypotheses_regulations[0,:,0].flatten(), s=1)
-        plt.xlabel(r'$g(z^{(0)})$')
-        plt.ylabel(r'$g^*(z^{(0)})$')
-        plt.grid()
-        plt.show()
+        meanErrorEnergy_db = [20*np.log10(nErrorSqrtEnergySingleHyp.mean()) for nErrorSqrtEnergySingleHyp in nErrorSqrtEnergy]
         
-    if True:
-        fontize=24
-        plt.figure(figsize=(16,9/2))
-        s = np.argmax(np.abs(pearsonCorrs_ribosome))
-        tVec = observations_tVec_torch[s].cpu().numpy().flatten() 
-        comb = combination[s].detach().cpu().numpy().flatten()
-        hyp = hypotheses_regulations[s,:,0].flatten()
-        #hyp = (hyp-hyp.mean())/hyp.std()
-        comb = (comb-comb.mean())/comb.std()
-        if pearsonCorrs_ribosome[s] < 0:
-            comb = -comb
-        comb = comb*hyp.std() + hyp.mean()
-        #p = observations_torch[s,:,0].cpu().numpy().flatten() 
-        #s = observations_torch[s,:,1].cpu().numpy().flatten() 
-        #plt.plot(tVec, p, linewidth=0.8, label='P')
-        #plt.plot(tVec, s, linewidth=0.8, label='S')
-        plt.plot(tVec, hyp, 'k', label=r'$hyp$')
-        plt.plot(tVec, comb,'r--', label=r'$g_\theta()$')        
-        plt.xlabel(r'$Time [AU]$', fontsize=fontize)
-        #plt.ylabel('Protein level', fontsize=fontize)
-        plt.legend(loc='lower left', fontsize=fontize)
-        plt.xticks([])
-        plt.yticks([])
-        plt.grid()
-        plt.show()
+        for im,meanErrorEnergy_db_singleHyp in enumerate(meanErrorEnergy_db):
+            errorEnergyStr = errorEnergyStr + f'errorHyp {im} = {str(round(meanErrorEnergy_db_singleHyp, 2))} db'
+        if False:
+            for ih,hypotheses_regulations in enumerate(hypotheses_regulations_list):
+                plt.figure()
+                plt.scatter(x=combination[0].detach().cpu().flatten(), y=hypotheses_regulations[0,:,0].flatten(), s=1)
+                plt.xlabel(r'$g(z^{(0)})$')
+                plt.ylabel(r'$g^*(z^{(0)})$')
+                plt.grid()
+                plt.show()
         
-
     
-    pearsonDic = {'ribosome': np.abs(pearsonCorrs_ribosome.mean())}
+    implicitPolyDictList = []
+    fontize=24
+    if not(previousComb is None):
+        nMSE = ((previousComb-combination).flatten().var()/previousComb.flatten().var()).item()
+        if report:
+            print(f'epoch {epoch} nMSE = {str(round(nMSE, 6))}')
+    nSamples2Plot = np.min([100, len(observations_tVec_torch[0].cpu().numpy().flatten())])
+    if not(hypotheses_regulations_list is None):
+        for ih,hypotheses_regulations in enumerate(hypotheses_regulations_list):
+            
+            s = np.argmax(np.abs(pearsonCorrs_ribosome[ih]))
+            tVec = observations_tVec_torch[s].cpu().numpy().flatten() 
+            comb = combination[s].detach().cpu().numpy().flatten()        
+            hyp = hypotheses_regulations[s,:,0].flatten()
+            #hyp = (hyp-hyp.mean())/hyp.std()
+            comb = (comb-comb.mean())/comb.std()
+            if pearsonCorrs_ribosome[ih,s] < 0:
+                comb = -comb
+            comb = comb*hyp.std() + hyp.mean()
+            
+            poly = PolynomialFeatures(degreeOfPolyFit[ih])
+            X_poly = poly.fit_transform(singleBatch.cpu().detach().numpy()[s])
+            model = LinearRegression()
+            model.fit(X_poly, comb)
+            poly_comb = model.predict(X_poly)
+            
+            pCorrOfPolyFit = np.abs(pd.Series(poly_comb).corr(pd.Series(comb)))
+            
+            
+            # Get the coefficients and intercept
+            coefficients = model.coef_
+            intercept = model.intercept_
+            feature_names = poly.get_feature_names_out()
+            
+            # Construct the polynomial equation as a string
+            terms = [f"{intercept:.3f}"]
+            for coef, name in zip(coefficients[1:], feature_names[1:]):
+                terms.append(f"{coef:.3f}*{name}")
+            
+            polynomial_equation = " + ".join(terms)
+            
+            if report:
+                plt.figure(figsize=(16,9/2))
+                plt.title(titleStr + f'; hyp {ih}; CR = {str(round(CR_zeta1.item(), 2))}; lr = {str(round(scheduler._last_lr[-1], 5))}')
+                
+                
+                plt.plot(tVec[:nSamples2Plot], hyp[:nSamples2Plot], 'k', label=r'$hyp$')
+                plt.plot(tVec[:nSamples2Plot], comb[:nSamples2Plot],'r--', label=r'$g_\theta()$')      
+                
+                plt.plot(tVec[:nSamples2Plot], poly_comb[:nSamples2Plot] ,'g--', label=f'Poly deg {degreeOfPolyFit[ih]}')      
+                
+                plt.xlabel(r'$Time [AU]$', fontsize=fontize)
+                #plt.ylabel('Protein level', fontsize=fontize)
+                plt.legend(loc='lower left', fontsize=fontize)
+                plt.xticks([])
+                plt.yticks([])
+                plt.grid()
+                
+                
+                # Print the polynomial equation
+                print(f"Polynomial Regression Equation with corr {str(round(pCorrOfPolyFit,2))}:")
+                print(f"mean(y) = {str(round(poly_comb.mean(),2))}; y =", polynomial_equation)
+                
+                plt.show()
+    
+    
+            
+            implicitPolyDictList.append({'coefficients': coefficients, 'feature_names': feature_names, 'intercept': intercept, 'combination': combination, 'CR': CR, 'CR_zeta1': CR_zeta1, 'hypotheses_regulations': hypotheses_regulations, 'singleBatch': singleBatch})
+    else:
+        for ih,polyDeg in enumerate(degreeOfPolyFit):
+            s = 0
+            tVec = observations_tVec_torch[s].cpu().numpy().flatten() 
+            comb = combination[s].detach().cpu().numpy().flatten()        
+            comb = (comb-comb.mean())/comb.std()
+            
+            poly = PolynomialFeatures(polyDeg)
+            X_poly = poly.fit_transform(singleBatch.cpu().detach().numpy()[s])
+            model = LinearRegression()
+            model.fit(X_poly, comb)
+            poly_comb = model.predict(X_poly)
+            
+            pCorrOfPolyFit = np.abs(pd.Series(poly_comb).corr(pd.Series(comb)))
+            
+            
+            # Get the coefficients and intercept
+            coefficients = model.coef_
+            intercept = model.intercept_
+            feature_names = poly.get_feature_names_out()
+            
+            # Construct the polynomial equation as a string
+            terms = [f"{intercept:.3f}"]
+            for coef, name in zip(coefficients[1:], feature_names[1:]):
+                terms.append(f"{coef:.3f}*{name}")
+            
+            polynomial_equation = " + ".join(terms)
+            
+            if report:
+                plt.figure(figsize=(16,9/2))
+                plt.title(titleStr + f'; polyFit {ih}; CR = {str(round(CR_zeta1.item(), 2))}; lr = {str(round(scheduler._last_lr[-1], 5))}')
+                
+                
+                #plt.plot(tVec, hyp, 'k', label=r'$hyp$')
+                plt.plot(tVec[:nSamples2Plot], comb[:nSamples2Plot],'r--', label=r'$g_\theta()$')      
+                
+                plt.plot(tVec[:nSamples2Plot], poly_comb[:nSamples2Plot] ,'g--', label=f'Poly deg {degreeOfPolyFit[ih]}')      
+                
+                plt.xlabel(r'$Time [AU]$', fontsize=fontize)
+                #plt.ylabel('Protein level', fontsize=fontize)
+                plt.legend(loc='lower left', fontsize=fontize)
+                plt.xticks([])
+                plt.yticks([])
+                plt.grid()
+                
+                
+                # Print the polynomial equation
+                print(f"Polynomial Regression Equation with corr {str(round(pCorrOfPolyFit,2))}:")
+                print(f"mean(y) = {str(round(poly_comb.mean(),2))}; y =", polynomial_equation)
+                
+                plt.show()
+    
+    
+            
+            implicitPolyDictList.append({'coefficients': coefficients, 'feature_names': feature_names, 'intercept': intercept, 'combination': combination, 'CR': CR, 'CR_zeta1': CR_zeta1, 'hypotheses_regulations': None, 'singleBatch': singleBatch})
+            
+        
+    # Create polynomial features
+    
+    if not(hypotheses_regulations_list is None):
+        pearsonDic = {'ribosome': [np.abs(pearsonCorrs_ribosomeSingleHyp.mean()) for pearsonCorrs_ribosomeSingleHyp in pearsonCorrs_ribosome]}
+    else:
+        pearsonDic = None
     if learnThrProcess:
         if dtIRAS_mode: 
           learnThrProcessStr = 'dtIRAS '
@@ -751,13 +868,15 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
         learnThrProcessStr = 'nativeIRAS'
     
     reportStr = trainStr + learnThrProcessStr + ' ' + optimizerStr + f' epoch {epoch}: %Selected = {str(round(nSelected/combinationPlayer.shuffleFactor/np.prod(combination.shape)*100))}, CR(zeta=1) = {str(round(CR_zeta1.item(), 3))}, CR = {str(round(CR.item(), 3))}, ' + daughterPrediction_str + '; ' + errorEnergyStr
-    enableText = True
-    if enableText:
+    
+    if report:
             
       print(reportStr)
-      print(f'Pearson correlation between learned combination g() and g^*() (mean,std) = {str(round(np.abs(pearsonCorrs_ribosome.mean()), 3))}, {str(round(np.abs(pearsonCorrs_ribosome.std()), 3))}')
+      if not(hypotheses_regulations_list is None):
+          for ih,pearsonCorrs_ribosomeSingleHyp in enumerate(pearsonCorrs_ribosome):
+              print(f'hyp {ih}: Pearson correlation between learned combination g() and g^*() (mean,std) = {str(round(np.abs(pearsonCorrs_ribosomeSingleHyp.mean()), 3))}, {str(round(np.abs(pearsonCorrs_ribosomeSingleHyp.std()), 3))}')
       
-    else:
+    elif False:
       if True:#dtIRAS_mode:
         authenticData = pd.DataFrame(columns=['xb','T','comb','combGT'], data=torch.cat((torch.reshape(observations_torch[0:1,1:,[0,2]], (-1,2)), torch.reshape(combination_daughter_error[0:1], (-1,1)), torch.reshape(hypotheses_regulations_torch[0:1,1:,0], (-1,1))), dim=1).detach().cpu().numpy())
         shuffledData = pd.DataFrame(columns=['xb','T','comb','ProbAssignedByPlayer'], data=torch.cat((torch.reshape(observations_shuffled_daughter[0:1,:,[0,2]], (-1,2)), torch.reshape(combination_shuffle_daughter_error[0:1,:], (-1,1)), torch.reshape(combinationOnNaiveShuffle_selectionProb[0:1,:], (-1,1))), dim=1).detach().cpu().numpy())
@@ -767,11 +886,11 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
         shuffledData = pd.DataFrame(columns=['xb','T','comb','ProbAssignedByPlayer'], data=torch.cat((torch.reshape(naiveShuffledObservations[0:1,:,[0,2]], (-1,2)), torch.reshape(combinationOnNaiveShuffle[0:1,:], (-1,1)), torch.reshape(combinationOnNaiveShuffle_selectionProb[0:1,:], (-1,1))), dim=1).detach().cpu().numpy())
         printShufflePlayerAndCombination(authenticData, shuffledData, hypotheses_regulations[:,:,0].flatten().std(), hypotheses_regulations[:,:,0].flatten().mean(), epoch, [pearsonCorr_sizer, pearsonCorr_adder, pearsonCorr_timer], titleStr + reportStr)        
       
-    return meanPredictionCorr, pearsonDic
+    return meanPredictionCorr, pearsonDic, implicitPolyDictList
     
     
-def IRAS_train(observations, observations_tVec, hypotheses_regulations, titleStr='', dtIRASFlag=True, debugPreShuffle=False):
-    
+def IRAS_train(observations, observations_tVec, hypotheses_regulations, titleStr='', dtIRASFlag=True, debugPreShuffle=False, nEpochs=100, seriesForPearson=None, hypothesesForPearson=None, features2ShuffleTogether=None, degreeOfPolyFit=2, externalReport=True):
+  print(f'IRAS_train - externalReport is {externalReport}')
   if debugPreShuffle:
     for sysIdx in range(observations.shape[0]):
         observations[sysIdx] = observations[sysIdx,np.random.permutation(observations.shape[1])]
@@ -790,10 +909,8 @@ def IRAS_train(observations, observations_tVec, hypotheses_regulations, titleStr
   dt = (observations_tVec[:,1:,0] - observations_tVec[:,:-1,0]).min()/10
   #print(f'dt = {dt}')
   #time.sleep(30)
-  if observations.min() > 0.5:
-      observations = np.concatenate((observations, np.log(observations), 1/observations), axis=2)
-      features2ShuffleTogether = [[0,3,6], [1,4,7], [2,5,8]]
-  else:
+
+  if features2ShuffleTogether is None:
       features2ShuffleTogether = [[f] for f in range(observations.shape[2])]
       
   #features2ShuffleTogether = [[f] for f in range(observations.shape[2])]
@@ -815,28 +932,52 @@ def IRAS_train(observations, observations_tVec, hypotheses_regulations, titleStr
 
   observations_torch = torch.from_numpy(observations).type(torch.float)
   observations_tVec_torch = torch.from_numpy(observations_tVec).type(torch.float)
-  hypotheses_regulations_torch = torch.from_numpy(hypotheses_regulations).type(torch.float)
+  if not(hypotheses_regulations is None):
+      hypotheses_regulations_torch = torch.from_numpy(hypotheses_regulations).type(torch.float)
+  else:
+      hypotheses_regulations_torch = None
+  if not(seriesForPearson is None):
+      seriesForPearson_torch = torch.from_numpy(seriesForPearson).type(torch.float)
+      if not(hypothesesForPearson is None):
+          hypothesesForPearson_torch = torch.from_numpy(hypothesesForPearson).type(torch.float)
+      else:
+          hypothesesForPearson_torch = None
+      trainReport = False
+      obsPearsonReport = True
+  else:
+      seriesForPearson_torch = None
+      hypothesesForPearson_torch = None
+      trainReport = True
+      obsPearsonReport = False
 
   playerPerPatient = False
   combinationPlayer = Combination_ANN(mu, Sigma_minus_half, features2ShuffleTogether, playerPerPatient=playerPerPatient, learnThrProcess=learnThrProcess, dt=dt)
   modelParams = combinationPlayer.parameters()
-  if dtIRASFlag:
-      optimizer = optim.Adam(modelParams, lr=0.001, weight_decay=0.001)
+  if True or dtIRASFlag:
+      optimizer = optim.Adam(modelParams, lr=0.01, weight_decay=0.001)
       optimizerStr = 'Adam'
   else:
-      optimizer = optim.SGD(modelParams, lr=0.001, momentum=0.9, weight_decay=0.001)
+      optimizer = optim.SGD(modelParams, lr=0.01, momentum=0.9, weight_decay=0.001)
       optimizerStr = 'SGD'
-  scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=90, gamma=np.sqrt(0.1))
-  nEpochs = 100
+  
+  scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=100, factor=0.5, threshold=0.01)
+
+  
 
   dtIRAS_mode = False # flag
 
   device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
   combinationPlayer.to(device)
 
-  observations_torch, observations_tVec_torch, hypotheses_regulations_torch = observations_torch.to(device), observations_tVec_torch.to(device), hypotheses_regulations_torch.to(device)
-
-  print(f'Dataset contains {observations_torch.shape[0]} systems, from each system a time-series of length {observations_torch.shape[1]} is observed, each observation contains {observations_torch.shape[2]} features')
+  observations_torch, observations_tVec_torch = observations_torch.to(device), observations_tVec_torch.to(device)
+  if not(hypotheses_regulations_torch is None):
+      observations_tVec_torch = hypotheses_regulations_torch.to(device)
+  if not(seriesForPearson_torch is None):
+      seriesForPearson_torch = seriesForPearson_torch.to(device)
+  if not(hypothesesForPearson_torch is None):   
+      hypothesesForPearson_torch = hypothesesForPearson_torch.to(device)
+  if externalReport:
+      print(f'Dataset contains {observations_torch.shape[0]} systems, from each system a time-series of length {observations_torch.shape[1]} is observed, each observation contains {observations_torch.shape[2]} features')
   #daughterPrediction_NVAR_wasOK = False
     
   validationFraction = 0.0
@@ -849,25 +990,50 @@ def IRAS_train(observations, observations_tVec, hypotheses_regulations, titleStr
   batchSize = 16
     
   for epoch in range(nEpochs):
-    display.clear_output(wait=True)
+    if externalReport:
+        display.clear_output(wait=True)
     currentTrainIndices = trainIndices[np.random.permutation(len(trainIndices))][:batchSize]
     
-    meanPredictionCorr, pearsonDicTrain = train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, observations_torch[currentTrainIndices], observations_tVec_torch[currentTrainIndices], hypotheses_regulations[currentTrainIndices], learnThrProcess, playerPerPatient, optimizerStr, trainFlag=True, debugPreShuffle=debugPreShuffle)
+    if not(hypotheses_regulations is None):
+        hypotheses_regulations_indices = hypotheses_regulations[currentTrainIndices]
+    else:
+        hypotheses_regulations_indices = None
+    
+    meanPredictionCorr, pearsonDicTrain, _ = train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, observations_torch[currentTrainIndices], observations_tVec_torch[currentTrainIndices], hypotheses_regulations_indices, learnThrProcess, playerPerPatient, optimizerStr, trainFlag=True, debugPreShuffle=debugPreShuffle, report=trainReport and externalReport, degreeOfPolyFit=degreeOfPolyFit)
+    if obsPearsonReport:
+        seriesForPearson_tVec = torch.arange(seriesForPearson_torch.shape[1])[None,:,None].expand(seriesForPearson_torch.shape[0],-1,-1)
+        if epoch > 0:
+            previousComb = implicitPolyDict[0]['combination']
+        else:
+            previousComb = None
+        _, _, implicitPolyDict = train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, seriesForPearson_torch, seriesForPearson_tVec, hypothesesForPearson, learnThrProcess, playerPerPatient, optimizerStr, trainFlag=False, debugPreShuffle=debugPreShuffle, report=obsPearsonReport and externalReport, degreeOfPolyFit=degreeOfPolyFit, titleStr=titleStr, previousComb=previousComb)
     #_, pearsonDicValidation = train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, observations_torch[validationIndices], hypotheses_regulations[validationIndices], learnThrProcess, playerPerPatient, optimizerStr, transform, mean_xd, trainFlag=False, debugPreShuffle=debugPreShuffle)
     
     
-  return meanPredictionCorr, pearsonDicTrain
+  return meanPredictionCorr, pearsonDicTrain, implicitPolyDict
 
 import time
-def IRAS_train_script(observations, observations_tVec, hypotheses_regulations, titleStr='', nativeIRAS=True, debugPreShuffle=False):
+def IRAS_train_script(observations, observations_tVec, hypotheses_regulations, titleStr='', nativeIRAS=True, debugPreShuffle=False, nEpochs=100, seriesForPearson=None, hypothesesForPearson=None, features2ShuffleTogether=None, degreeOfPolyFit=2, externalReport=True):
+    #print(f'externalReport is {externalReport}')
+    if not(seriesForPearson is None):
+        seriesForPearson = seriesForPearson.copy()
+    if not(hypothesesForPearson is None):
+        hypothesesForPearson = hypothesesForPearson.copy()
+        
+    
     
     pearsonCorr = list()
     nRuns = 1
     for i in range(nRuns):
+        if not(hypotheses_regulations is None):
+            hypotheses_regulations_copy = hypotheses_regulations.copy()
+        else:
+            hypotheses_regulations_copy = hypotheses_regulations
+        meanPredictionCorr, pearsonDicTrain, implicitPolyDict = IRAS_train(observations.copy(), observations_tVec.copy(), hypotheses_regulations_copy, titleStr=titleStr, dtIRASFlag=not(nativeIRAS), debugPreShuffle=debugPreShuffle, nEpochs=nEpochs, seriesForPearson=seriesForPearson, hypothesesForPearson=hypothesesForPearson, features2ShuffleTogether=features2ShuffleTogether, degreeOfPolyFit=degreeOfPolyFit, externalReport=externalReport)
+        if not(pearsonDicTrain is None):
+            pearsonCorr.append(pearsonDicTrain['ribosome'])
         
-        meanPredictionCorr, pearsonDicTrain = IRAS_train(observations.copy(), observations_tVec.copy(), hypotheses_regulations.copy(), titleStr=titleStr, dtIRASFlag=not(nativeIRAS), debugPreShuffle=debugPreShuffle)
-        
-        pearsonCorr.append(pearsonDicTrain['ribosome'])
-        
+    if externalReport:
+        print(f'Pearson correlation between the learned combination g() and the desired g^*() over {nRuns} runs {str(round(np.asarray(pearsonCorr).mean(), 3))}, {str(round(np.asarray(pearsonCorr).std(), 3))}')
     
-    print(f'Pearson correlation between the learned combination g() and the desired g^*() over {nRuns} runs {str(round(np.asarray(pearsonCorr).mean(), 3))}, {str(round(np.asarray(pearsonCorr).std(), 3))}')
+    return implicitPolyDict
