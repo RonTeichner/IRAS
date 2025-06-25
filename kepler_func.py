@@ -7,6 +7,7 @@ Created on Fri Jun 20 13:18:19 2025
 """
 
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 from astroquery.jplhorizons import Horizons
 import pandas as pd
 import numpy as np
@@ -107,6 +108,9 @@ def get_orbital_observations(planets, epoch, obs_epochs):
     plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/orbits.png', dpi=300)
     
     
+    
+    
+    
     true_anomaly_values_df = pd.DataFrame(true_anomaly_values)
     
     # Convert to DataFrame for easy handling
@@ -129,8 +133,11 @@ def get_orbital_observations(planets, epoch, obs_epochs):
     orbitalObs_df['r_proj2OrbitalPlane'] = orbitalObs_df.apply(lambda row: proj_r_2OrbitalPlane(row, orbitalParams_df), axis=1)
     orbitalObs_df['r_2D'] = orbitalObs_df.apply(lambda row: transform_2_2D(row, orbitalParams_df, np.array([[1], [0], [0]])), axis=1)
     
+    orbitalObs_df['v'] = orbitalObs_df.apply(lambda row: convert_to_r(row, orbitalObs_df, orbitalParams_df, 0, to_v=True), axis=1)
+    
     alpha = 1e-1
     orbitalObs_df['rNoisy'] = orbitalObs_df.apply(lambda row: convert_to_r(row, orbitalObs_df, orbitalParams_df, alpha), axis=1)
+    orbitalObs_df['vNoisy'] = orbitalObs_df.apply(lambda row: convert_to_r(row, orbitalObs_df, orbitalParams_df, alpha, to_v=True), axis=1)
     
     orbitalObs_df['r_tag'] = orbitalObs_df.apply(lambda row: rotate_r_to_r_tag(row, orbitalParams_df, False), axis=1)
     
@@ -138,6 +145,18 @@ def get_orbital_observations(planets, epoch, obs_epochs):
     
     true_anomaly_values_df['r'] = true_anomaly_values_df.apply(lambda row: convert_to_r(row, true_anomaly_values_df, orbitalParams_df, 0), axis=1)
     true_anomaly_values_df['r_tag'] = true_anomaly_values_df.apply(lambda row: rotate_r_to_r_tag(row, orbitalParams_df, False), axis=1)
+    
+    true_anomaly_values_df['v'] = true_anomaly_values_df.apply(lambda row: convert_to_r(row, true_anomaly_values_df, orbitalParams_df, 0, to_v=True), axis=1)
+    
+    if False:#plot velocities
+        planet = 'Mercury'
+        Obs = orbitalObs_df[orbitalObs_df['target'] == planet]
+        plt.figure()
+        plt.scatter(x=Obs['vx'], y=Obs['vy'], s=1, label=planet)
+        plt.xlabel('vx')
+        plt.ylabel('vy')
+        plt.show()
+        
     
     
 
@@ -208,7 +227,8 @@ def transform_2_2D(row, orbitalParams_df, a, est=False):
     
     
 
-def convert_to_r(row, orbitalObs_df, orbitalParams_df, alpha, workOn2D_est=False):
+def convert_to_r(row, orbitalObs_df, orbitalParams_df, alpha, workOn2D_est=False, to_v=False):
+    assert not(to_v and workOn2D_est)
     #print(f'{row.shape}')
     planet = row['target']
     Obs = orbitalObs_df[orbitalObs_df['target'] == planet]
@@ -223,16 +243,26 @@ def convert_to_r(row, orbitalObs_df, orbitalParams_df, alpha, workOn2D_est=False
             #print(f'r_2D_est[1,0] = {r_2D_est[1,0]}')
             return np.array([[r_2D_est[0,0] + alpha*np.asarray(alpha_c).std()*np.random.randn()], [r_2D_est[1,0] + alpha*np.asarray(beta_c).std()*np.random.randn()]])
         else:
-            x = [Obs['r'].to_numpy()[i][0,0] for i in range(Obs.shape[0])]
-            y = [Obs['r'].to_numpy()[i][1,0] for i in range(Obs.shape[0])]
-            z = [Obs['r'].to_numpy()[i][2,0] for i in range(Obs.shape[0])]
-        
-            return np.array([[row['x'] + alpha*np.asarray(x).std()*np.random.randn()], [row['y'] + alpha*np.asarray(y).std()*np.random.randn()], [row['z'] + alpha*np.asarray(z).std()*np.random.randn()]])
+            if to_v:
+                vx = [Obs['v'].to_numpy()[i][0,0] for i in range(Obs.shape[0])]
+                vy = [Obs['v'].to_numpy()[i][1,0] for i in range(Obs.shape[0])]
+                vz = [Obs['v'].to_numpy()[i][2,0] for i in range(Obs.shape[0])]
+            
+                return np.array([[row['vx'] + alpha*np.asarray(vx).std()*np.random.randn()], [row['vy'] + alpha*np.asarray(vy).std()*np.random.randn()], [row['vz'] + alpha*np.asarray(vz).std()*np.random.randn()]])
+            else:
+                x = [Obs['r'].to_numpy()[i][0,0] for i in range(Obs.shape[0])]
+                y = [Obs['r'].to_numpy()[i][1,0] for i in range(Obs.shape[0])]
+                z = [Obs['r'].to_numpy()[i][2,0] for i in range(Obs.shape[0])]
+            
+                return np.array([[row['x'] + alpha*np.asarray(x).std()*np.random.randn()], [row['y'] + alpha*np.asarray(y).std()*np.random.randn()], [row['z'] + alpha*np.asarray(z).std()*np.random.randn()]])
     else:       
         if workOn2D_est:
             return np.array([[r_2D_est[0,0]], [r_2D_est[1,0]]])
         else:
-            return np.array([[row['x']], [row['y']], [row['z']]])
+            if to_v:
+                return np.array([[row['vx']], [row['vy']], [row['vz']]])
+            else:
+                return np.array([[row['x']], [row['y']], [row['z']]])
 
 def rotate_r_to_r_tag(row, orbitalParams_df, noisyObs):
     planet = row['target']
@@ -393,6 +423,76 @@ def different_plots(planets, true_anomaly_values_df, orbitalObs_df):
     plt.tight_layout()
     plt.show()
     
+def plot_est2D_ellipse(IRAS_runOnCoordinatesResultsDict, planet, orbitalParams_df, orbitalObs_df, title=''):
+    colors = {
+        'Mercury': 'gray',
+        'Venus': 'orange',
+        'Earth': 'blue',
+        'Mars': 'red'
+    }
+    
+    ellipse_params = IRAS_runOnCoordinatesResultsDict[planet + '2D']['implicitPolyDictList'][0]['ellipse_fit']['ellipse_params']
+    focci = IRAS_runOnCoordinatesResultsDict[planet + '2D']['implicitPolyDictList'][0]['ellipse_fit']['focci']
+    axes_eccentricity = IRAS_runOnCoordinatesResultsDict[planet + '2D']['implicitPolyDictList'][0]['ellipse_fit']['axes_eccentricity']
+    corr = np.abs(IRAS_runOnCoordinatesResultsDict[planet + '2D']['implicitPolyDictList'][0]['ellipse_fit']['corr'])
+    
+    print(f'Pearson correlation between g() and estimated ellipse is {str(round(corr,3))}')
+    
+    proj_sun_on_plane = proj_r_2EstOrbitalPlane(pd.Series({'target': planet, 'r': np.array([[0], [0], [0]])}), orbitalParams_df)
+    sun_coordinates_on_plane = transform_2_2D(pd.Series({'target': planet, 'r_proj2OrbitalPlane': proj_sun_on_plane}), orbitalParams_df, np.array([[1], [0], [0]]))
+    
+    OrbitParams = orbitalParams_df[orbitalParams_df['target'] == planet]
+    
+    A, B, C, h, k = ellipse_params['A'], ellipse_params['B'], ellipse_params['C'], ellipse_params['h'], ellipse_params['k']
+    
+    # Create a grid of x and y values
+    x_vals = np.linspace(h - 5, h + 5, 400)
+    y_vals = np.linspace(k - 5, k + 5, 400)
+    X, Y = np.meshgrid(x_vals, y_vals)
+    
+    # Compute the left-hand side of the ellipse equation
+    Z = A * (X - h)**2 + B * (X - h) * (Y - k) + C * (Y - k)**2
+    
+    # Plot the contour where the equation equals 1
+    plt.contour(X, Y, Z, levels=[1], colors='blue', label='fitted ellipse for IRAS g()')
+    plt.scatter(sun_coordinates_on_plane[0,0], sun_coordinates_on_plane[1,0], color='yellow', label='Sun', s=100)
+    plt.scatter(x=[focci[0][0], focci[1][0]], y=[focci[0][1], focci[1][1]], marker='+', s=100, color='blue', label='focci')
+    #plt.title("Ellipse: A(x−h)^2 + B(x−h)(y−k) + C(y−k)^2 = 1")
+    plt.text(-0.3, 0.2, r'$\hat{a} = $' + f'{str(round(axes_eccentricity["a"],3))}   ', fontsize=14)# + r'$a = $' + f'{str(round(OrbitParams["a"][0], 3))}', fontsize=12)
+    plt.text(-0.3, 0.1, r'$\hat{e} = $' + f'{str(round(axes_eccentricity["e"],3))}   ', fontsize=14)# + r'$e = $' + f'{str(round(OrbitParams["e"][0], 3))}', fontsize=12)
+    #plt.title("IRAS-estimated ellipse")
+    plt.xlabel(r"$x_{\hat{n}}$")
+    plt.ylabel(r"$y_{\hat{n}}$")
+    plt.gca().set_aspect('equal', adjustable='box')
+    plt.grid(True)
+    
+    Obs = orbitalObs_df[orbitalObs_df['target'] == 'Mercury']
+    alpha = np.asarray([Obs['r_2D'].to_numpy()[i][0,0] for i in range(Obs.shape[0])])
+    beta = np.asarray([Obs['r_2D'].to_numpy()[i][1,0] for i in range(Obs.shape[0])])
+    alpha_hat = np.asarray([Obs['r_2D_est'].to_numpy()[i][0,0] for i in range(Obs.shape[0])])
+    beta_hat = np.asarray([Obs['r_2D_est'].to_numpy()[i][1,0] for i in range(Obs.shape[0])])
+    indices = np.random.permutation(np.arange(len(alpha_hat)))[:30]
+    plt.scatter(x=alpha_hat[indices], y=beta_hat[indices], marker='x', s=80, color=colors[planet], label=planet+' coordinates projected\nto IRAS estimated orbital plane')
+    
+    #plt.legend(loc='lower left')
+    
+    
+    # Create proxy artists for legend
+    legend_elements = [
+    Line2D([0], [0], color='blue', lw=2, label='fitted ellipse for IRAS '+title),
+    Line2D([0], [0], marker='o', color='yellow', linestyle='None', markersize=10, label='Sun'),
+    Line2D([0], [0], marker='+', color='blue', linestyle='None', markersize=10, label='focci'),
+    Line2D([0], [0], marker='x', color=colors[planet], linestyle='None', markersize=10, label= r'$r_{\mathrm{2D}}$: ' + planet + ' coordinates projected\nto IRAS estimated orbital plane')
+    ]
+
+    plt.legend(handles=legend_elements, loc='lower left')
+
+    
+    plt.xlim([-0.5, 0.5])
+    plt.ylim([-0.5, 0.5])
+    plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/'+planet+'2D_corr_'+f'{str(round(corr,3))}'+'_.png', dpi=300)
+    
+    
 def perifocal_trans_plot(planets, orbitalObs_df, orbitalParams_df):
     for planet in planets:
     
@@ -454,7 +554,8 @@ def perifocal_trans_plot(planets, orbitalObs_df, orbitalParams_df):
         
 
 
-def runIRAS_onCoordinates(planet, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, runOn2D=False, externalReport=False):
+def runIRAS(planet, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, runOn2D=False, runCoordinates_n_Velocities=False, externalReport=False):
+    assert not(runOn2D and runCoordinates_n_Velocities)
     model = true_anomaly_values_df[true_anomaly_values_df['target'] == planet] 
     Obs = orbitalObs_df[orbitalObs_df['target'] == planet]
     OrbitParams = orbitalParams_df[orbitalParams_df['target'] == planet]
@@ -463,6 +564,11 @@ def runIRAS_onCoordinates(planet, true_anomaly_values_df, orbitalObs_df, orbital
     y_model = [model['r'].to_numpy()[i][1,0] for i in range(model.shape[0])]
     z_model = [model['r'].to_numpy()[i][2,0] for i in range(model.shape[0])]
     observations_model = np.concatenate((np.asarray(x_model)[:,None], np.asarray(y_model)[:,None], np.asarray(z_model)[:,None]), axis=1)[None]
+    
+    vx_model = [model['v'].to_numpy()[i][0,0] for i in range(model.shape[0])]
+    vy_model = [model['v'].to_numpy()[i][1,0] for i in range(model.shape[0])]
+    vz_model = [model['v'].to_numpy()[i][2,0] for i in range(model.shape[0])]
+    v_observations_model = np.concatenate((np.asarray(vx_model)[:,None], np.asarray(vy_model)[:,None], np.asarray(vz_model)[:,None]), axis=1)[None]
     
     x_model_tag = [model['r_tag'].to_numpy()[i][0,0] for i in range(model.shape[0])]
     y_model_tag = [model['r_tag'].to_numpy()[i][1,0] for i in range(model.shape[0])]
@@ -473,6 +579,11 @@ def runIRAS_onCoordinates(planet, true_anomaly_values_df, orbitalObs_df, orbital
     y = [Obs['r'].to_numpy()[i][1,0] for i in range(Obs.shape[0])]
     z = [Obs['r'].to_numpy()[i][2,0] for i in range(Obs.shape[0])]
     observations = np.concatenate((np.asarray(x)[:,None], np.asarray(y)[:,None], np.asarray(z)[:,None]), axis=1)[None]
+    
+    vx = [Obs['v'].to_numpy()[i][0,0] for i in range(Obs.shape[0])]
+    vy = [Obs['v'].to_numpy()[i][1,0] for i in range(Obs.shape[0])]
+    vz = [Obs['v'].to_numpy()[i][2,0] for i in range(Obs.shape[0])]
+    v_observations = np.concatenate((np.asarray(vx)[:,None], np.asarray(vy)[:,None], np.asarray(vz)[:,None]), axis=1)[None]
     
     if runOn2D:
         alpha = [Obs['r_2D_est'].to_numpy()[i][0,0] for i in range(Obs.shape[0])]
@@ -499,19 +610,28 @@ def runIRAS_onCoordinates(planet, true_anomaly_values_df, orbitalObs_df, orbital
     x_noisy = [Obs['rNoisy'].to_numpy()[i][0,0] for i in range(Obs.shape[0])]
     y_noisy = [Obs['rNoisy'].to_numpy()[i][1,0] for i in range(Obs.shape[0])]
     z_noisy = [Obs['rNoisy'].to_numpy()[i][2,0] for i in range(Obs.shape[0])]
-    observations_noisy = np.concatenate((np.asarray(x_noisy)[:,None], np.asarray(y_noisy)[:,None], np.asarray(z_noisy)[:,None]), axis=1)[None]
+    
+    
+    vx_noisy = [Obs['vNoisy'].to_numpy()[i][0,0] for i in range(Obs.shape[0])]
+    vy_noisy = [Obs['vNoisy'].to_numpy()[i][1,0] for i in range(Obs.shape[0])]
+    vz_noisy = [Obs['vNoisy'].to_numpy()[i][2,0] for i in range(Obs.shape[0])]
+    v_observations_noisy = np.concatenate((np.asarray(vx_noisy)[:,None], np.asarray(vy_noisy)[:,None], np.asarray(vz_noisy)[:,None]), axis=1)[None]
     
     if runOn2D:
         alpha_noisy = [Obs['r_2D_est_noisy'].to_numpy()[i][0,0] for i in range(Obs.shape[0])]
         beta_noisy = [Obs['r_2D_est_noisy'].to_numpy()[i][1,0] for i in range(Obs.shape[0])]
         observations_noisy = np.concatenate((np.asarray(alpha_noisy)[:,None], np.asarray(beta_noisy)[:,None]), axis=1)[None]
+    elif runCoordinates_n_Velocities:
+        observations_noisy = np.concatenate((np.asarray(x_noisy)[:,None], np.asarray(y_noisy)[:,None], np.asarray(z_noisy)[:,None], np.asarray(vx_noisy)[:,None], np.asarray(vy_noisy)[:,None], np.asarray(vz_noisy)[:,None]), axis=1)[None]
+    else:
+        observations_noisy = np.concatenate((np.asarray(x_noisy)[:,None], np.asarray(y_noisy)[:,None], np.asarray(z_noisy)[:,None]), axis=1)[None]
     
     
     x_tag_noisy = [Obs['r_tagNoisy'].to_numpy()[i][0,0] for i in range(Obs.shape[0])]
     y_tag_noisy = [Obs['r_tagNoisy'].to_numpy()[i][1,0] for i in range(Obs.shape[0])]
     z_tag_noisy = [Obs['r_tagNoisy'].to_numpy()[i][2,0] for i in range(Obs.shape[0])]
     
-    if runOn2D:
+    if runOn2D or runCoordinates_n_Velocities:
         hypotheses_regulations_plane_noisy, hypotheses_regulations_ellipse_noisy, hypotheses_regulations_pearson = None, None, None
     else:
         hypotheses_regulations_plane_noisy = np.asarray(z_tag_noisy)[None,None,:,None]
@@ -536,11 +656,17 @@ def runIRAS_onCoordinates(planet, true_anomaly_values_df, orbitalObs_df, orbital
     
     
     if runOn2D:
-        observations2IRAS = observations2D_est[:,:,:3]
+        observations2IRAS = observations2D_est
         degreeOfPolyFit_pearson = [2]
+        features2ShuffleTogether = [[0], [1]]
+    elif runCoordinates_n_Velocities:
+        observations2IRAS = np.concatenate((observations, v_observations), axis=-1)
+        degreeOfPolyFit_pearson = [1]
+        features2ShuffleTogether = [[0,1,2], [3,4,5]]
     else:
-        observations2IRAS = observations[:,:,:3]
+        observations2IRAS = observations
         degreeOfPolyFit_pearson = [1,2]
+        features2ShuffleTogether = [[0], [1], [2]]
 
     nIRAS_iter = 10
     min_CR_naive = np.inf
@@ -558,28 +684,29 @@ def runIRAS_onCoordinates(planet, true_anomaly_values_df, orbitalObs_df, orbital
         nIRAS_iter = 1
     
     for i in range(nIRAS_iter):
-        implicitPolyDictList = IRAS_train_script(observations2IRAS, observations_tVec, hypotheses_regulations_plane_noisy, seriesForPearson=observations_noisy, hypothesesForPearson=hypotheses_regulations_pearson, titleStr=planet, nativeIRAS=True, nEpochs=500, degreeOfPolyFit=degreeOfPolyFit_pearson, externalReport=externalReport)#, features2ShuffleTogether=[[0],[1],[2]])
+        implicitPolyDictList = IRAS_train_script(observations2IRAS, observations_tVec, hypotheses_regulations_plane_noisy, seriesForPearson=observations_noisy, hypothesesForPearson=hypotheses_regulations_pearson, titleStr=planet, nativeIRAS=True, nEpochs=500, degreeOfPolyFit=degreeOfPolyFit_pearson, externalReport=externalReport, features2ShuffleTogether=features2ShuffleTogether)
         if implicitPolyDictList[0]['CR_zeta1'] < min_CR_naive:
             minCR_implicitPolyDictList = implicitPolyDictList
             min_CR_naive = implicitPolyDictList[0]['CR_zeta1']
-            
-    for minCR_implicitPolyDict,degreeOfPolyFit in zip(minCR_implicitPolyDictList, degreeOfPolyFit_pearson):
-        if degreeOfPolyFit == 2:
-             #ellipse_fit_1 = fit_ellipse(minCR_implicitPolyDict['singleBatch'], minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
-             #ellipse_fit_2 = fit_ellipse(minCR_implicitPolyDict['singleBatch'], -minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
-             
-             ellipse_fit_1 = fit_ellipse_analytic(observations2IRAS, minCR_implicitPolyDict['singleBatch'], minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
-             ellipse_fit_2 = fit_ellipse_analytic(observations2IRAS, minCR_implicitPolyDict['singleBatch'], -minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
-             
-             if np.abs(ellipse_fit_1['corr']) > np.abs(ellipse_fit_2['corr']):
-                 minCR_implicitPolyDict['ellipse_fit'] = ellipse_fit_1
-             else:
-                 minCR_implicitPolyDict['ellipse_fit'] = ellipse_fit_2
+    
+    if runOn2D:
+        for minCR_implicitPolyDict,degreeOfPolyFit in zip(minCR_implicitPolyDictList, degreeOfPolyFit_pearson):
+            if degreeOfPolyFit == 2:
+                 #ellipse_fit_1 = fit_ellipse(minCR_implicitPolyDict['singleBatch'], minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
+                 #ellipse_fit_2 = fit_ellipse(minCR_implicitPolyDict['singleBatch'], -minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
                  
-             #theta = minCR_implicitPolyDict['ellipse_fit']['ellipse_rot_angle']
-             #R = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta),  np.cos(theta)]])
-             
-             #minCR_implicitPolyDict['ellipse_fit']['rotated_ellipse'] = fit_ellipse_analytic(torch.tensor((minCR_implicitPolyDict['singleBatch'] @ minCR_implicitPolyDict['singleBatch'].numpy()[:,:,:,None])[:,:,:,0]), minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
+                 ellipse_fit_1 = fit_ellipse_analytic(observations2IRAS, minCR_implicitPolyDict['singleBatch'], minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
+                 ellipse_fit_2 = fit_ellipse_analytic(observations2IRAS, minCR_implicitPolyDict['singleBatch'], -minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
+                 
+                 if np.abs(ellipse_fit_1['corr']) > np.abs(ellipse_fit_2['corr']):
+                     minCR_implicitPolyDict['ellipse_fit'] = ellipse_fit_1
+                 else:
+                     minCR_implicitPolyDict['ellipse_fit'] = ellipse_fit_2
+                     
+                 #theta = minCR_implicitPolyDict['ellipse_fit']['ellipse_rot_angle']
+                 #R = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta),  np.cos(theta)]])
+                 
+                 #minCR_implicitPolyDict['ellipse_fit']['rotated_ellipse'] = fit_ellipse_analytic(torch.tensor((minCR_implicitPolyDict['singleBatch'] @ minCR_implicitPolyDict['singleBatch'].numpy()[:,:,:,None])[:,:,:,0]), minCR_implicitPolyDict['combination'], minCR_implicitPolyDict['intercept'], minCR_implicitPolyDict['coefficients'])
              
 
     
@@ -620,6 +747,42 @@ def extract_ellipse_parameters(coefficients):
         'reconstructed_constant': constant_term
     }
 
+
+
+def compute_foci(A, B, C, h, k):
+    """
+    Compute the coordinates of the foci of an ellipse defined by:
+    A(x−h)^2 + B(x−h)(y−k) + C(y−k)^2 = 1
+    """
+    # Step 1: Construct the matrix of the quadratic form
+    M = np.array([[A, B / 2],
+                  [B / 2, C]])
+
+    # Step 2: Compute eigenvalues and eigenvectors
+    eigenvalues, eigenvectors = np.linalg.eigh(M)
+
+    # Step 3: Sort eigenvalues to identify semi-major and semi-minor axes
+    idx = np.argsort(eigenvalues)
+    lambda1, lambda2 = eigenvalues[idx[0]], eigenvalues[idx[1]]
+    v1, v2 = eigenvectors[:, idx[0]], eigenvectors[:, idx[1]]
+
+    # Step 4: Compute semi-axes lengths
+    a = 1 / np.sqrt(lambda1)
+    b = 1 / np.sqrt(lambda2)
+
+    # Ensure a is the semi-major axis
+    if a < b:
+        a, b = b, a
+        v1, v2 = v2, v1
+
+    # Step 5: Compute distance to foci
+    c = np.sqrt(a**2 - b**2)
+
+    # Step 6: Compute foci coordinates
+    focus1 = (h + c * v1[0], k + c * v1[1])
+    focus2 = (h - c * v1[0], k - c * v1[1])
+
+    return focus1, focus2
 
 
 def ellipse_axes_and_eccentricity(A, B, C, h, k):
@@ -697,7 +860,7 @@ def fit_ellipse_analytic(observations2IRAS, singleBatch, combination, intercept,
     
     corr = pd.Series(predicted_l_data).corr(pd.Series(l_data))
     
-    return {'ellipse_eq': equation_str, 'corr': corr, 'ellipse_params': {'A':A, 'B':B, 'C':C, 'h':h, 'k':  k}, 'ellipse_rot_angle': clc_ellipse_theta(A,B,C), 'axes_eccentricity': ellipse_axes_and_eccentricity(A, B, C, h, k)}
+    return {'ellipse_eq': equation_str, 'corr': corr, 'ellipse_params': {'A':A, 'B':B, 'C':C, 'h':h, 'k':  k}, 'ellipse_rot_angle': clc_ellipse_theta(A,B,C), 'axes_eccentricity': ellipse_axes_and_eccentricity(A, B, C, h, k), 'focci': compute_foci(A, B, C, h, k)}
     
 def clc_ellipse_theta(A,B,C):
     # Compute tan(2θ)
@@ -748,7 +911,7 @@ def fit_ellipse(singleBatch, combination, intercept, coefficients):
     
     corr = pd.Series(predicted_l_data).corr(pd.Series(l_data))
     
-    return {'ellipse_eq': equation_str, 'corr': corr, 'ellipse_params': {'A':A_opt, 'B':B_opt, 'C':C_opt, 'h':h_opt, 'k':  k_opt}, 'ellipse_rot_angle': clc_ellipse_theta(A_opt,B_opt,C_opt), 'axes_eccentricity': ellipse_axes_and_eccentricity(A_opt, B_opt, C_opt, h_opt, k_opt)}
+    return {'ellipse_eq': equation_str, 'corr': corr, 'ellipse_params': {'A':A_opt, 'B':B_opt, 'C':C_opt, 'h':h_opt, 'k':  k_opt}, 'ellipse_rot_angle': clc_ellipse_theta(A_opt,B_opt,C_opt), 'axes_eccentricity': ellipse_axes_and_eccentricity(A_opt, B_opt, C_opt, h_opt, k_opt), 'focci': compute_foci(A_opt, B_opt, C_opt, h_opt, k_opt)}
 
 
 # Define the model function
