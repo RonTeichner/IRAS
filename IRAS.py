@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import make_pipeline
+from sklearn.linear_model import Lasso
 
 import torch
 import torch.nn as nn
@@ -32,7 +33,7 @@ class Combination_ANN(nn.Module):
         self.detachMode = True
         self.dt = dt
         self.inputDim = Sigma_minus_half.shape[0]
-        self.shuffleFactor = 100
+        self.shuffleFactor = 250
         self.Sigma_minus_half = nn.parameter.Parameter(torch.tensor(Sigma_minus_half, dtype=torch.float), requires_grad=False)
         self.mu = nn.parameter.Parameter(torch.tensor(mu, dtype=torch.float), requires_grad=False)
         self.features2ShuffleTogetherLists = features2ShuffleTogether
@@ -585,7 +586,7 @@ from IPython import display
 import pandas as pd
 #%matplotlib inline
 
-def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, observations_torch, observations_tVec_torch, hypotheses_regulations_list, learnThrProcess, playerPerPatient, optimizerStr, trainFlag, debugPreShuffle=False, report=True, degreeOfPolyFit=2, titleStr='', previousComb=None):
+def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, observations_torch, observations_tVec_torch, hypotheses_regulations_list, learnThrProcess, playerPerPatient, optimizerStr, trainFlag, debugPreShuffle=False, report=True, degreeOfPolyFit=2, onlyPolyMixTerms=False, titleStr='', previousComb=None):
     meanPredictionCorr = None
     dtIRAS_mode = epoch >= switch2dtIRASepoch
     combinationPlayer.detachMode = not(dtIRAS_mode)
@@ -701,6 +702,8 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
 
     errorEnergyStr = ''
     if not(hypotheses_regulations_list is None):
+        if hypotheses_regulations_list.shape[0] == 1:
+            hypotheses_regulations_list = [hypotheses_regulations_list]
         nErrorSqrtEnergy = np.zeros((len(hypotheses_regulations_list), combination.shape[0]))
         pearsonCorrs_ribosome = np.zeros((len(hypotheses_regulations_list), combination.shape[0]))
         for ih,hypotheses_regulations in enumerate(hypotheses_regulations_list):
@@ -750,6 +753,18 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
             
             poly = PolynomialFeatures(degreeOfPolyFit[ih])
             X_poly = poly.fit_transform(singleBatch.cpu().detach().numpy()[s])
+            feature_names = poly.get_feature_names_out()
+            
+            if onlyPolyMixTerms:                
+                # Get the powers (exponents)
+                powers = poly.powers_                
+                # Identify interaction terms (more than one non-zero exponent)
+                interaction_mask = (powers > 0).sum(axis=1) > 1                
+                X_poly = X_poly[:, interaction_mask]
+                feature_names = feature_names[interaction_mask]
+                #print(f'feature_names={feature_names}')
+
+            
             model = LinearRegression()
             model.fit(X_poly, comb)
             poly_comb = model.predict(X_poly)
@@ -760,7 +775,7 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
             # Get the coefficients and intercept
             coefficients = model.coef_
             intercept = model.intercept_
-            feature_names = poly.get_feature_names_out()
+            
             
             # Construct the polynomial equation as a string
             terms = [f"{intercept:.3f}"]
@@ -805,7 +820,26 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
             
             poly = PolynomialFeatures(polyDeg)
             X_poly = poly.fit_transform(singleBatch.cpu().detach().numpy()[s])
-            model = LinearRegression()
+            feature_names = poly.get_feature_names_out()
+            
+            if onlyPolyMixTerms:                
+                # Get the powers (exponents)
+                powers = poly.powers_     
+                #print(f'onlyPolyMixTerms={onlyPolyMixTerms}')
+                #print(f'feature_names={feature_names}')
+                #print(f'powers={powers}')
+                # Identify interaction terms (more than one non-zero exponent)
+                interaction_mask = (powers > 0).sum(axis=1) > 1                
+                X_poly = X_poly[:, interaction_mask]
+                feature_names = feature_names[interaction_mask]
+                #print(f'feature_names={feature_names}')
+            
+            enableLasso = False
+            if enableLasso:
+                model = Lasso(alpha=0.1)  # alpha is the regularization parameter
+            else:
+                model = LinearRegression()
+            
             model.fit(X_poly, comb)
             poly_comb = model.predict(X_poly)
             
@@ -815,7 +849,13 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
             # Get the coefficients and intercept
             coefficients = model.coef_
             intercept = model.intercept_
-            feature_names = poly.get_feature_names_out()
+            
+            # since the mean of comb was set to zero:
+            normVal = np.linalg.norm(np.concatenate(([intercept], coefficients)))
+            coefficients = coefficients/normVal
+            intercept = intercept/normVal
+            #print(f'norm val is {np.linalg.norm(np.concatenate(([intercept], coefficients)))}')
+            
             
             # Construct the polynomial equation as a string
             terms = [f"{intercept:.3f}"]
@@ -889,7 +929,7 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
     return meanPredictionCorr, pearsonDic, implicitPolyDictList
     
     
-def IRAS_train(observations, observations_tVec, hypotheses_regulations, titleStr='', dtIRASFlag=True, debugPreShuffle=False, nEpochs=100, seriesForPearson=None, hypothesesForPearson=None, features2ShuffleTogether=None, degreeOfPolyFit=2, externalReport=True):
+def IRAS_train(observations, observations_tVec, hypotheses_regulations, titleStr='', dtIRASFlag=True, debugPreShuffle=False, nEpochs=100, seriesForPearson=None, hypothesesForPearson=None, features2ShuffleTogether=None, playerPerPatient=False, degreeOfPolyFit=2, onlyPolyMixTerms=False, externalReport=True):
   print(f'IRAS_train - externalReport is {externalReport}')
   if debugPreShuffle:
     for sysIdx in range(observations.shape[0]):
@@ -950,7 +990,7 @@ def IRAS_train(observations, observations_tVec, hypotheses_regulations, titleStr
       trainReport = True
       obsPearsonReport = False
 
-  playerPerPatient = False
+  #playerPerPatient = False
   combinationPlayer = Combination_ANN(mu, Sigma_minus_half, features2ShuffleTogether, playerPerPatient=playerPerPatient, learnThrProcess=learnThrProcess, dt=dt)
   modelParams = combinationPlayer.parameters()
   if True or dtIRASFlag:
@@ -999,21 +1039,21 @@ def IRAS_train(observations, observations_tVec, hypotheses_regulations, titleStr
     else:
         hypotheses_regulations_indices = None
     
-    meanPredictionCorr, pearsonDicTrain, _ = train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, observations_torch[currentTrainIndices], observations_tVec_torch[currentTrainIndices], hypotheses_regulations_indices, learnThrProcess, playerPerPatient, optimizerStr, trainFlag=True, debugPreShuffle=debugPreShuffle, report=trainReport and externalReport, degreeOfPolyFit=degreeOfPolyFit)
+    meanPredictionCorr, pearsonDicTrain, _ = train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, observations_torch[currentTrainIndices], observations_tVec_torch[currentTrainIndices], hypotheses_regulations_indices, learnThrProcess, playerPerPatient, optimizerStr, trainFlag=True, debugPreShuffle=debugPreShuffle, onlyPolyMixTerms=onlyPolyMixTerms, report=trainReport and externalReport, degreeOfPolyFit=degreeOfPolyFit)
     if obsPearsonReport:
         seriesForPearson_tVec = torch.arange(seriesForPearson_torch.shape[1])[None,:,None].expand(seriesForPearson_torch.shape[0],-1,-1)
         if epoch > 0:
             previousComb = implicitPolyDict[0]['combination']
         else:
             previousComb = None
-        _, _, implicitPolyDict = train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, seriesForPearson_torch, seriesForPearson_tVec, hypothesesForPearson, learnThrProcess, playerPerPatient, optimizerStr, trainFlag=False, debugPreShuffle=debugPreShuffle, report=obsPearsonReport and externalReport, degreeOfPolyFit=degreeOfPolyFit, titleStr=titleStr, previousComb=previousComb)
+        _, _, implicitPolyDict = train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, seriesForPearson_torch, seriesForPearson_tVec, hypothesesForPearson, learnThrProcess, playerPerPatient, optimizerStr, trainFlag=False, debugPreShuffle=debugPreShuffle, report=obsPearsonReport and externalReport, degreeOfPolyFit=degreeOfPolyFit,onlyPolyMixTerms=onlyPolyMixTerms, titleStr=titleStr, previousComb=previousComb)
     #_, pearsonDicValidation = train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, observations_torch[validationIndices], hypotheses_regulations[validationIndices], learnThrProcess, playerPerPatient, optimizerStr, transform, mean_xd, trainFlag=False, debugPreShuffle=debugPreShuffle)
     
     
   return meanPredictionCorr, pearsonDicTrain, implicitPolyDict
 
 import time
-def IRAS_train_script(observations, observations_tVec, hypotheses_regulations, titleStr='', nativeIRAS=True, debugPreShuffle=False, nEpochs=100, seriesForPearson=None, hypothesesForPearson=None, features2ShuffleTogether=None, degreeOfPolyFit=2, externalReport=True):
+def IRAS_train_script(observations, observations_tVec, hypotheses_regulations, titleStr='', nativeIRAS=True, debugPreShuffle=False, onlyPolyMixTerms=False, nEpochs=100, seriesForPearson=None, hypothesesForPearson=None, features2ShuffleTogether=None, degreeOfPolyFit=2, playerPerPatient=False, externalReport=True):
     #print(f'externalReport is {externalReport}')
     if not(seriesForPearson is None):
         seriesForPearson = seriesForPearson.copy()
@@ -1029,7 +1069,7 @@ def IRAS_train_script(observations, observations_tVec, hypotheses_regulations, t
             hypotheses_regulations_copy = hypotheses_regulations.copy()
         else:
             hypotheses_regulations_copy = hypotheses_regulations
-        meanPredictionCorr, pearsonDicTrain, implicitPolyDict = IRAS_train(observations.copy(), observations_tVec.copy(), hypotheses_regulations_copy, titleStr=titleStr, dtIRASFlag=not(nativeIRAS), debugPreShuffle=debugPreShuffle, nEpochs=nEpochs, seriesForPearson=seriesForPearson, hypothesesForPearson=hypothesesForPearson, features2ShuffleTogether=features2ShuffleTogether, degreeOfPolyFit=degreeOfPolyFit, externalReport=externalReport)
+        meanPredictionCorr, pearsonDicTrain, implicitPolyDict = IRAS_train(observations.copy(), observations_tVec.copy(), hypotheses_regulations_copy, titleStr=titleStr, dtIRASFlag=not(nativeIRAS), debugPreShuffle=debugPreShuffle, nEpochs=nEpochs, seriesForPearson=seriesForPearson, hypothesesForPearson=hypothesesForPearson, features2ShuffleTogether=features2ShuffleTogether, playerPerPatient=playerPerPatient, degreeOfPolyFit=degreeOfPolyFit, onlyPolyMixTerms=onlyPolyMixTerms, externalReport=externalReport)
         if not(pearsonDicTrain is None):
             pearsonCorr.append(pearsonDicTrain['ribosome'])
         
