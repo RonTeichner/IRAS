@@ -180,21 +180,34 @@ def get_orbital_observations(planets, epoch, obs_epochs):
 def angularMomentum2D(r,v):
     return np.array([r[0]*v[1] - r[1]*v[0]])
 
-def calc_L(row, noisy=False, twoD=False, est=False):
+def calc_L(row, noisy=False, twoD=False, est=False, proj2Ellipse=False):
+    
     if not noisy:
         if twoD:
-            if est:
-                return angularMomentum2D(row['r_2D_est'][:,0], row['v_2D_est'][:,0])[:,None]
+            if proj2Ellipse:
+                if est:
+                    return angularMomentum2D(row['r_2D_est_proj2estEllipse'][:,0], row['v_2D_est_proj2estEllipse'][:,0])[:,None]
+                else:
+                    return angularMomentum2D(row['r_2D_proj2estEllipse'][:,0], row['v_2D_proj2estEllipse'][:,0])[:,None]
             else:
-                return angularMomentum2D(row['r_2D'][:,0], row['v_2D'][:,0])[:,None]
+                 if est:
+                     return angularMomentum2D(row['r_2D_est'][:,0], row['v_2D_est'][:,0])[:,None]
+                 else:
+                     return angularMomentum2D(row['r_2D'][:,0], row['v_2D'][:,0])[:,None]   
         else:
             return np.cross(row['r'][:,0], row['v'][:,0])[:,None]
     else:
         if twoD:
-            if est:
-                return angularMomentum2D(row['r_2D_est_noisy'][:,0], row['v_2D_est_noisy'][:,0])[:,None]
+            if proj2Ellipse:
+                if est:
+                    return angularMomentum2D(row['r_2D_est_proj2estEllipse_noisy'][:,0], row['v_2D_est_proj2estEllipse_noisy'][:,0])[:,None]
+                else:
+                    return angularMomentum2D(row['r_2D_proj2estEllipse_noisy'][:,0], row['v_2D_proj2estEllipse_noisy'][:,0])[:,None]
             else:
-                return angularMomentum2D(row['r_2D_noisy'][:,0], row['v_2D_noisy'][:,0])[:,None]
+                if est:
+                    return angularMomentum2D(row['r_2D_est_noisy'][:,0], row['v_2D_est_noisy'][:,0])[:,None]
+                else:
+                    return angularMomentum2D(row['r_2D_noisy'][:,0], row['v_2D_noisy'][:,0])[:,None]
         else:
             return np.cross(row['rNoisy'][:,0], row['vNoisy'][:,0])[:,None]
     
@@ -274,7 +287,8 @@ def transform_2_2D(row, orbitalParams_df, a, est=False, to_v=False):
     
     
 
-def convert_to_r(row, orbitalObs_df, orbitalParams_df, alpha, workOn2D_est=False, to_v=False, est=False):
+def convert_to_r(row, orbitalObs_df, orbitalParams_df, alpha, workOn2D_est=False, to_v=False, est=False, workOn2D_Proj=False):
+    assert not(workOn2D_est and workOn2D_Proj)
     planet = row['target']
     Obs = orbitalObs_df[orbitalObs_df['target'] == planet]
     OrbitParams = orbitalParams_df[orbitalParams_df['target'] == planet]
@@ -298,6 +312,27 @@ def convert_to_r(row, orbitalObs_df, orbitalParams_df, alpha, workOn2D_est=False
                     alpha_c = [Obs['r_2D'].to_numpy()[i][0,0] for i in range(Obs.shape[0])]
                     beta_c = [Obs['r_2D'].to_numpy()[i][1,0] for i in range(Obs.shape[0])]  
                     r_2D_est = row['r_2D']
+            
+            return np.array([[r_2D_est[0,0] + alpha*np.asarray(alpha_c).std()*np.random.randn()], [r_2D_est[1,0] + alpha*np.asarray(beta_c).std()*np.random.randn()]])
+        elif workOn2D_Proj:
+            if to_v:
+                if est:
+                    alpha_c = [Obs['v_2D_est_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs.shape[0])]
+                    beta_c = [Obs['v_2D_est_proj2estEllipse'].to_numpy()[i][1,0] for i in range(Obs.shape[0])]  
+                    r_2D_est = row['v_2D_est_proj2estEllipse']
+                else:
+                    alpha_c = [Obs['v_2D_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs.shape[0])]
+                    beta_c = [Obs['v_2D_proj2estEllipse'].to_numpy()[i][1,0] for i in range(Obs.shape[0])]  
+                    r_2D_est = row['v_2D_proj2estEllipse']
+            else:
+                if est:
+                    alpha_c = [Obs['r_2D_est_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs.shape[0])]
+                    beta_c = [Obs['r_2D_est_proj2estEllipse'].to_numpy()[i][1,0] for i in range(Obs.shape[0])]  
+                    r_2D_est = row['r_2D_est_proj2estEllipse']
+                else:
+                    alpha_c = [Obs['r_2D_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs.shape[0])]
+                    beta_c = [Obs['r_2D_proj2estEllipse'].to_numpy()[i][1,0] for i in range(Obs.shape[0])]  
+                    r_2D_est = row['r_2D_proj2estEllipse']
             
             return np.array([[r_2D_est[0,0] + alpha*np.asarray(alpha_c).std()*np.random.randn()], [r_2D_est[1,0] + alpha*np.asarray(beta_c).std()*np.random.randn()]])
         else:
