@@ -754,12 +754,15 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
             poly = PolynomialFeatures(degreeOfPolyFit[ih])
             X_poly = poly.fit_transform(singleBatch.cpu().detach().numpy()[s])
             feature_names = poly.get_feature_names_out()
-            
+            #print(f'feature_names={feature_names}')
             if onlyPolyMixTerms:                
                 # Get the powers (exponents)
                 powers = poly.powers_                
                 # Identify interaction terms (more than one non-zero exponent)
-                interaction_mask = (powers > 0).sum(axis=1) > 1                
+                interaction_mask = (powers > 0).sum(axis=1) > 1     
+                #print(f'interaction_mask.shape={interaction_mask.shape}')
+                #print(f'interaction_mask[0]={interaction_mask[0]}')
+                interaction_mask[0] = True
                 X_poly = X_poly[:, interaction_mask]
                 feature_names = feature_names[interaction_mask]
                 #print(f'feature_names={feature_names}')
@@ -776,11 +779,11 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
             coefficients = model.coef_
             intercept = model.intercept_
             
-            
+            #print(f'coefficients.shape={coefficients.shape}')
             # Construct the polynomial equation as a string
-            terms = [f"{intercept:.3f}"]
+            terms = [f"{intercept:.9f}"]
             for coef, name in zip(coefficients[1:], feature_names[1:]):
-                terms.append(f"{coef:.3f}*{name}")
+                terms.append(f"{coef:.9f}*{name}")
             
             polynomial_equation = " + ".join(terms)
             
@@ -829,7 +832,8 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
                 #print(f'feature_names={feature_names}')
                 #print(f'powers={powers}')
                 # Identify interaction terms (more than one non-zero exponent)
-                interaction_mask = (powers > 0).sum(axis=1) > 1                
+                interaction_mask = (powers > 0).sum(axis=1) > 1   
+                interaction_mask[0] = True
                 X_poly = X_poly[:, interaction_mask]
                 feature_names = feature_names[interaction_mask]
                 #print(f'feature_names={feature_names}')
@@ -930,7 +934,7 @@ def train(epoch, switch2dtIRASepoch, combinationPlayer, optimizer, scheduler, ob
     
     
 def IRAS_train(observations, observations_tVec, hypotheses_regulations, titleStr='', dtIRASFlag=True, debugPreShuffle=False, nEpochs=100, seriesForPearson=None, hypothesesForPearson=None, features2ShuffleTogether=None, playerPerPatient=False, degreeOfPolyFit=2, onlyPolyMixTerms=False, externalReport=True):
-  print(f'IRAS_train - externalReport is {externalReport}')
+  #print(f'IRAS_train - externalReport is {externalReport}')
   if debugPreShuffle:
     for sysIdx in range(observations.shape[0]):
         observations[sysIdx] = observations[sysIdx,np.random.permutation(observations.shape[1])]

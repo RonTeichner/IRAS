@@ -12,6 +12,7 @@ from astroquery.jplhorizons import Horizons
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
 import numpy as np
+import pickle
 import torch
 from scipy.optimize import minimize
 from IRAS import IRAS_train_script
@@ -237,7 +238,7 @@ def get_orbital_observations(planets, epoch, obs_epochs):
     multi_orbitalObs_df['L'] = multi_orbitalObs_df.apply(lambda row: calc_L(row), axis=1)
     multi_orbitalObs_df['L_2D'] = multi_orbitalObs_df.apply(lambda row: calc_L(row, twoD=True), axis=1)
     
-    alpha = 1e-2
+    alpha = 1e-3
     multi_orbitalObs_df['rNoisy'] = multi_orbitalObs_df.apply(lambda row: convert_to_r(row, multi_orbitalObs_df, multi_orbitalParams_df, alpha), axis=1)
     multi_orbitalObs_df['vNoisy'] = multi_orbitalObs_df.apply(lambda row: convert_to_r(row, multi_orbitalObs_df, multi_orbitalParams_df, alpha, to_v=True), axis=1)
     
@@ -963,17 +964,19 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
     
     model, Obs, OrbitParams = dict(), dict(), dict()
     for planet in planets:
-        model[planet] = true_anomaly_values_df[true_anomaly_values_df['target'] == planet] 
+        if not(true_anomaly_values_df is None):
+            model[planet] = true_anomaly_values_df[true_anomaly_values_df['target'] == planet] 
         Obs[planet] = orbitalObs_df[orbitalObs_df['target'] == planet]
         OrbitParams[planet] = orbitalParams_df[orbitalParams_df['target'] == planet]
     
-    observations_model = np.zeros((0, model[planets[0]].shape[0], 3))
-    for planet in planets:
-        x_model = [model[planet]['r'].to_numpy()[i][0,0] for i in range(model[planet].shape[0])]
-        y_model = [model[planet]['r'].to_numpy()[i][1,0] for i in range(model[planet].shape[0])]
-        z_model = [model[planet]['r'].to_numpy()[i][2,0] for i in range(model[planet].shape[0])]
-        observations_single_model = np.concatenate((np.asarray(x_model)[:,None], np.asarray(y_model)[:,None], np.asarray(z_model)[:,None]), axis=1)[None]
-        observations_model = np.concatenate((observations_model,observations_single_model), axis=0)
+    if not(true_anomaly_values_df is None):
+        observations_model = np.zeros((0, model[planets[0]].shape[0], 3))
+        for planet in planets:
+            x_model = [model[planet]['r'].to_numpy()[i][0,0] for i in range(model[planet].shape[0])]
+            y_model = [model[planet]['r'].to_numpy()[i][1,0] for i in range(model[planet].shape[0])]
+            z_model = [model[planet]['r'].to_numpy()[i][2,0] for i in range(model[planet].shape[0])]
+            observations_single_model = np.concatenate((np.asarray(x_model)[:,None], np.asarray(y_model)[:,None], np.asarray(z_model)[:,None]), axis=1)[None]
+            observations_model = np.concatenate((observations_model,observations_single_model), axis=0)
     
     a, e, b = dict(), dict(), dict()
     for planet in planets:
@@ -981,13 +984,14 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         e[planet] = OrbitParams[planet]['e'].to_numpy()[0]
         b[planet] = a[planet]*np.sqrt(1 - np.power(e[planet],2))
     
-    hypotheses_regulations_model = np.zeros((0, model[planets[0]].shape[0], 1))
-    for planet in planets:
-        x_model_tag = [model[planet]['r_tag'].to_numpy()[i][0,0] for i in range(model[planet].shape[0])]
-        y_model_tag = [model[planet]['r_tag'].to_numpy()[i][1,0] for i in range(model[planet].shape[0])]
-        z_model_tag = [model[planet]['r_tag'].to_numpy()[i][2,0] for i in range(model[planet].shape[0])]
-        hypotheses_regulations_single_model = (np.power(x_model_tag + a[planet]*e[planet], 2) / np.power(a[planet], 2) + np.power(y_model_tag, 2) / np.power(b[planet], 2))[None,:,None]
-        hypotheses_regulations_model = np.concatenate((hypotheses_regulations_model, hypotheses_regulations_single_model), axis=0)
+    if not(true_anomaly_values_df is None):
+        hypotheses_regulations_model = np.zeros((0, model[planets[0]].shape[0], 1))
+        for planet in planets:
+            x_model_tag = [model[planet]['r_tag'].to_numpy()[i][0,0] for i in range(model[planet].shape[0])]
+            y_model_tag = [model[planet]['r_tag'].to_numpy()[i][1,0] for i in range(model[planet].shape[0])]
+            z_model_tag = [model[planet]['r_tag'].to_numpy()[i][2,0] for i in range(model[planet].shape[0])]
+            hypotheses_regulations_single_model = (np.power(x_model_tag + a[planet]*e[planet], 2) / np.power(a[planet], 2) + np.power(y_model_tag, 2) / np.power(b[planet], 2))[None,:,None]
+            hypotheses_regulations_model = np.concatenate((hypotheses_regulations_model, hypotheses_regulations_single_model), axis=0)
     
     observations = np.zeros((0, Obs[planets[0]].shape[0], 3))
     for planet in planets:
@@ -1012,27 +1016,28 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         coordinate_observations2D_estProj2Ellipse = np.zeros((0, Obs[planets[0]].shape[0], 2))
         coordinate_observations2D = np.zeros((0, Obs[planets[0]].shape[0], 2))
         for planet in planets:
-            alpha = [Obs[planet]['r_2D_est'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-            beta = [Obs[planet]['r_2D_est'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-            observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
-            coordinate_observations2D_est = np.concatenate((coordinate_observations2D_est, observations2D_est_single), axis=0)
-            
-            alpha = [Obs[planet]['r_2D_est_sign_y'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-            beta = [Obs[planet]['r_2D_est_sign_y'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-            observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
-            coordinate_observations2D_est_sign_y = np.concatenate((coordinate_observations2D_est_sign_y, observations2D_est_single), axis=0)
-            
-            alpha = [Obs[planet]['r_2D_est_sign_y_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-            beta = [Obs[planet]['r_2D_est_sign_y_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-            observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
-            coordinate_observations2D_est_sign_y_noisy = np.concatenate((coordinate_observations2D_est_sign_y_noisy, observations2D_est_single), axis=0)
-            
-            
-            
-            alpha = [Obs[planet]['r_2D_est_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-            beta = [Obs[planet]['r_2D_est_proj2estEllipse'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-            observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
-            coordinate_observations2D_estProj2Ellipse = np.concatenate((coordinate_observations2D_estProj2Ellipse, observations2D_est_single), axis=0)
+            if 'r_2D_est' in Obs[planet].columns:
+                alpha = [Obs[planet]['r_2D_est'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                beta = [Obs[planet]['r_2D_est'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
+                coordinate_observations2D_est = np.concatenate((coordinate_observations2D_est, observations2D_est_single), axis=0)
+                
+                alpha = [Obs[planet]['r_2D_est_sign_y'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                beta = [Obs[planet]['r_2D_est_sign_y'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
+                coordinate_observations2D_est_sign_y = np.concatenate((coordinate_observations2D_est_sign_y, observations2D_est_single), axis=0)
+                
+                alpha = [Obs[planet]['r_2D_est_sign_y_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                beta = [Obs[planet]['r_2D_est_sign_y_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
+                coordinate_observations2D_est_sign_y_noisy = np.concatenate((coordinate_observations2D_est_sign_y_noisy, observations2D_est_single), axis=0)
+                
+                
+                
+                alpha = [Obs[planet]['r_2D_est_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                beta = [Obs[planet]['r_2D_est_proj2estEllipse'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
+                coordinate_observations2D_estProj2Ellipse = np.concatenate((coordinate_observations2D_estProj2Ellipse, observations2D_est_single), axis=0)
             
             alpha = [Obs[planet]['r_2D'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
             beta = [Obs[planet]['r_2D'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
@@ -1046,25 +1051,26 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         v_observations2D_estProj2Ellipse = np.zeros((0, Obs[planets[0]].shape[0], 2))
         v_observations2D = np.zeros((0, Obs[planets[0]].shape[0], 2))
         for planet in planets:
-            alpha = [Obs[planet]['v_2D_est'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-            beta = [Obs[planet]['v_2D_est'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-            observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
-            v_observations2D_est = np.concatenate((v_observations2D_est, observations2D_est_single), axis=0)
-            
-            alpha = [Obs[planet]['v_2D_est_sign_x'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-            beta = [Obs[planet]['v_2D_est_sign_x'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-            observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
-            v_observations2D_est_sign_x = np.concatenate((v_observations2D_est_sign_x, observations2D_est_single), axis=0)
-            
-            alpha = [Obs[planet]['v_2D_est_sign_x_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-            beta = [Obs[planet]['v_2D_est_sign_x_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-            observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
-            v_observations2D_est_sign_x_noisy = np.concatenate((v_observations2D_est_sign_x_noisy, observations2D_est_single), axis=0)
-            
-            alpha = [Obs[planet]['v_2D_est_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-            beta = [Obs[planet]['v_2D_est_proj2estEllipse'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-            observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
-            v_observations2D_estProj2Ellipse = np.concatenate((v_observations2D_estProj2Ellipse, observations2D_est_single), axis=0)
+            if 'v_2D_est' in Obs[planet].columns:
+                alpha = [Obs[planet]['v_2D_est'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                beta = [Obs[planet]['v_2D_est'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
+                v_observations2D_est = np.concatenate((v_observations2D_est, observations2D_est_single), axis=0)
+                
+                alpha = [Obs[planet]['v_2D_est_sign_x'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                beta = [Obs[planet]['v_2D_est_sign_x'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
+                v_observations2D_est_sign_x = np.concatenate((v_observations2D_est_sign_x, observations2D_est_single), axis=0)
+                
+                alpha = [Obs[planet]['v_2D_est_sign_x_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                beta = [Obs[planet]['v_2D_est_sign_x_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
+                v_observations2D_est_sign_x_noisy = np.concatenate((v_observations2D_est_sign_x_noisy, observations2D_est_single), axis=0)
+                
+                alpha = [Obs[planet]['v_2D_est_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                beta = [Obs[planet]['v_2D_est_proj2estEllipse'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
+                v_observations2D_estProj2Ellipse = np.concatenate((v_observations2D_estProj2Ellipse, observations2D_est_single), axis=0)
             
             alpha = [Obs[planet]['v_2D'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
             beta = [Obs[planet]['v_2D'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
@@ -1106,20 +1112,23 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         coordinate_observations_noisy = np.concatenate((coordinate_observations_noisy, coordinate_observations_noisy_single), axis=0)
         
         if runOn2D or runCoordinates_n_Velocities or runOn2D_v:
-            x_noisy = [Obs[planet]['r_2D_est_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-            y_noisy = [Obs[planet]['r_2D_est_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-            coordinate_observations_noisy_single = np.concatenate((np.asarray(x_noisy)[:,None], np.asarray(y_noisy)[:,None]), axis=1)[None]
-            coordinate_observations2D_est_noisy = np.concatenate((coordinate_observations2D_est_noisy, coordinate_observations_noisy_single), axis=0)
-            
-            x_noisy = [Obs[planet]['r_2D_est_proj2estEllipse_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-            y_noisy = [Obs[planet]['r_2D_est_proj2estEllipse_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-            coordinate_observations_noisy_single = np.concatenate((np.asarray(x_noisy)[:,None], np.asarray(y_noisy)[:,None]), axis=1)[None]
-            coordinate_observations2D_estProj2Ellipse_noisy = np.concatenate((coordinate_observations2D_estProj2Ellipse_noisy, coordinate_observations_noisy_single), axis=0)
-            
             x_noisy = [Obs[planet]['r_2D_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
             y_noisy = [Obs[planet]['r_2D_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
             coordinate_observations_noisy_single = np.concatenate((np.asarray(x_noisy)[:,None], np.asarray(y_noisy)[:,None]), axis=1)[None]
             coordinate_observations2D_noisy = np.concatenate((coordinate_observations2D_noisy, coordinate_observations_noisy_single), axis=0)
+            
+            if 'r_2D_est_noisy' in Obs[planet].columns:
+                x_noisy = [Obs[planet]['r_2D_est_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                y_noisy = [Obs[planet]['r_2D_est_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                coordinate_observations_noisy_single = np.concatenate((np.asarray(x_noisy)[:,None], np.asarray(y_noisy)[:,None]), axis=1)[None]
+                coordinate_observations2D_est_noisy = np.concatenate((coordinate_observations2D_est_noisy, coordinate_observations_noisy_single), axis=0)
+                
+                x_noisy = [Obs[planet]['r_2D_est_proj2estEllipse_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                y_noisy = [Obs[planet]['r_2D_est_proj2estEllipse_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                coordinate_observations_noisy_single = np.concatenate((np.asarray(x_noisy)[:,None], np.asarray(y_noisy)[:,None]), axis=1)[None]
+                coordinate_observations2D_estProj2Ellipse_noisy = np.concatenate((coordinate_observations2D_estProj2Ellipse_noisy, coordinate_observations_noisy_single), axis=0)
+                
+                
         
         Lx_noisy = [Obs[planet]['L_Noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
         #print(f'Lx_noisy.shape={np.asarray(Lx_noisy)[:,None].shape}')
@@ -1134,15 +1143,16 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         v_observations_noisy = np.concatenate((v_observations_noisy, v_observations_noisy_single), axis=0)
         
         if runCoordinates_n_Velocities or runOn2D_v:
-            vx_noisy = [Obs[planet]['v_2D_est_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-            vy_noisy = [Obs[planet]['v_2D_est_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-            v_observations_noisy_single = np.concatenate((np.asarray(vx_noisy)[:,None], np.asarray(vy_noisy)[:,None]), axis=1)[None]
-            v_observations2D_est_noisy = np.concatenate((v_observations2D_est_noisy, v_observations_noisy_single), axis=0)
-            
-            vx_noisy = [Obs[planet]['v_2D_est_proj2estEllipse_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-            vy_noisy = [Obs[planet]['v_2D_est_proj2estEllipse_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-            v_observations_noisy_single = np.concatenate((np.asarray(vx_noisy)[:,None], np.asarray(vy_noisy)[:,None]), axis=1)[None]
-            v_observations2D_estProj2Ellipse_noisy = np.concatenate((v_observations2D_estProj2Ellipse_noisy, v_observations_noisy_single), axis=0)
+            if 'v_2D_est_noisy' in Obs[planet]:
+                vx_noisy = [Obs[planet]['v_2D_est_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                vy_noisy = [Obs[planet]['v_2D_est_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                v_observations_noisy_single = np.concatenate((np.asarray(vx_noisy)[:,None], np.asarray(vy_noisy)[:,None]), axis=1)[None]
+                v_observations2D_est_noisy = np.concatenate((v_observations2D_est_noisy, v_observations_noisy_single), axis=0)
+                
+                vx_noisy = [Obs[planet]['v_2D_est_proj2estEllipse_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                vy_noisy = [Obs[planet]['v_2D_est_proj2estEllipse_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                v_observations_noisy_single = np.concatenate((np.asarray(vx_noisy)[:,None], np.asarray(vy_noisy)[:,None]), axis=1)[None]
+                v_observations2D_estProj2Ellipse_noisy = np.concatenate((v_observations2D_estProj2Ellipse_noisy, v_observations_noisy_single), axis=0)
     
     if runOn2D or runCoordinates_n_Velocities or runOn2D_v:
         observations2D_est_noisy = np.zeros((0, Obs[planets[0]].shape[0], 2))
@@ -1154,10 +1164,8 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         L_2D_est_sign_noisy = np.zeros((0, Obs[planets[0]].shape[0], 1))
         L_2D_proj2Ellipse = np.zeros((0, Obs[planets[0]].shape[0], 1))
         for planet in planets:
-            alpha = [Obs[planet]['r_2D_est_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-            beta = [Obs[planet]['r_2D_est_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-            observations2D_est_noisy_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
-            observations2D_est_noisy = np.concatenate((observations2D_est_noisy, observations2D_est_noisy_single), axis=0)
+            observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
+            L_2D = np.concatenate((L_2D, observations2D_est_noisy_single), axis=0)
             
             alpha = [Obs[planet]['v_2D_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
             beta = [Obs[planet]['v_2D_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
@@ -1167,20 +1175,24 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
             observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
             L_2D_noisy = np.concatenate((L_2D_noisy, observations2D_est_noisy_single), axis=0)
             
-            observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
-            L_2D = np.concatenate((L_2D, observations2D_est_noisy_single), axis=0)
+            if 'r_2D_est_noisy' in Obs[planet]:
+                alpha = [Obs[planet]['r_2D_est_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                beta = [Obs[planet]['r_2D_est_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                observations2D_est_noisy_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
+                observations2D_est_noisy = np.concatenate((observations2D_est_noisy, observations2D_est_noisy_single), axis=0)
+                
             
-            observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_est_proj2estEllipse_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
-            L_2D_proj2Ellipse_noisy = np.concatenate((L_2D_proj2Ellipse_noisy, observations2D_est_noisy_single), axis=0)
-            
-            observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_est_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
-            L_2D_proj2Ellipse = np.concatenate((L_2D_proj2Ellipse, observations2D_est_noisy_single), axis=0)
-            
-            observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_est_sign'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
-            L_2D_est_sign = np.concatenate((L_2D_est_sign, observations2D_est_noisy_single), axis=0)
-            
-            observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_est_sign_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
-            L_2D_est_sign_noisy = np.concatenate((L_2D_est_sign_noisy, observations2D_est_noisy_single), axis=0)
+                observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_est_proj2estEllipse_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
+                L_2D_proj2Ellipse_noisy = np.concatenate((L_2D_proj2Ellipse_noisy, observations2D_est_noisy_single), axis=0)
+                
+                observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_est_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
+                L_2D_proj2Ellipse = np.concatenate((L_2D_proj2Ellipse, observations2D_est_noisy_single), axis=0)
+                
+                observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_est_sign'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
+                L_2D_est_sign = np.concatenate((L_2D_est_sign, observations2D_est_noisy_single), axis=0)
+                
+                observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_est_sign_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
+                L_2D_est_sign_noisy = np.concatenate((L_2D_est_sign_noisy, observations2D_est_noisy_single), axis=0)
             
     
     
@@ -1204,8 +1216,8 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         #L_2D_est_noisy = [Obs[planet]['L_2D_est_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
         #hypotheses_regulations_pearson = np.asarray(L_2D_est_noisy)[None,:,None]
         
-        observations2IRAS = np.concatenate((coordinate_observations2D[:,:,:1], v_observations2D[:,:,:1]), axis=-1)
-        observations_noisy = np.concatenate((coordinate_observations2D_noisy[:,:,:1], v_observations2D_noisy[:,:,:1]), axis=-1)
+        observations2IRAS = np.concatenate((coordinate_observations2D, v_observations2D), axis=-1)
+        observations_noisy = np.concatenate((coordinate_observations2D_noisy, v_observations2D_noisy), axis=-1)
         
         #observations2IRAS = np.concatenate((coordinate_observations2D_est, v_observations2D_est[:1]), axis=-1)#observations_noisy
         #observations_noisy = np.concatenate((coordinate_observations2D_est_noisy, v_observations2D_est_noisy[:1]), axis=-1)
@@ -1214,8 +1226,8 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         #observations_noisy = np.concatenate((coordinate_observations2D_est_sign_y_noisy, v_observations2D_est_sign_x_noisy), axis=-1)
         
         
-        #hypotheses_regulations_pearson = L_2D_est_sign_noisy
-        #hypotheses_regulations = L_2D_est_sign
+        hypotheses_regulations_pearson = L_2D_noisy
+        hypotheses_regulations = L_2D
         
         #indices = np.logical_not(np.logical_or(np.isnan(hypotheses_regulations).any(axis=-1), np.logical_or(np.isnan(observations_noisy).any(axis=-1), np.logical_or(np.isnan(observations2IRAS).any(axis=-1), np.isnan(hypotheses_regulations_pearson).any(axis=-1))))[0])
         #observations2IRAS = observations2IRAS[:,indices]
@@ -1231,8 +1243,9 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         #hypotheses_regulations = L_2D
         
         degreeOfPolyFit_pearson = [2]
-        onlyPolyMixTerms = False
-        features2ShuffleTogether = None#[[0,1]]
+        onlyPolyMixTerms = True
+        playerPerPatient = True
+        features2ShuffleTogether = [[0,1],[2,3]]
     elif runOn2D_v:
         observations_noisy = v_observations2D_est_noisy
         observations2IRAS = v_observations2D_est
@@ -1244,8 +1257,8 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         degreeOfPolyFit_pearson = [1,2]
         features2ShuffleTogether = [[0], [1], [2]]
         
-    observations_tVec = np.repeat(np.arange(observations2IRAS.shape[1])[None,:,None], observations.shape[0], 0)
-    if False:
+    observations_tVec = np.repeat(np.arange(observations2IRAS.shape[1])[None,:,None], observations2IRAS.shape[0], 0)
+    if True:
         data={'time': observations_tVec.flatten(),
          'Id': np.repeat(np.arange(observations_tVec.shape[0]), observations_tVec.shape[1]),
          'batch': np.zeros(observations_tVec.shape[0]*observations_tVec.shape[1]),
@@ -1267,9 +1280,9 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         pd.DataFrame(data).to_csv('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/'+'orbit2DNoisy'+'.csv')
         
         
-        #print(f'hypotheses_regulations_pearson.shape={hypotheses_regulations_pearson.shape}')
-        #print(f'observations_noisy.shape={observations_noisy.shape}')
-        #return
+        print(f'hypotheses_regulations_pearson.shape={hypotheses_regulations_pearson.shape}')
+        print(f'observations_noisy.shape={observations_noisy.shape}')
+        return
         
         plt.figure()
         plt.subplot(1,2,1)
@@ -1283,11 +1296,9 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         plt.show()
         return
     
-        hypotheses_regulations_pearson = hypotheses_regulations_pearson[:1]
-        observations_noisy = observations_noisy[:1]
-    hypotheses_regulations = None
+        
     
-    nIRAS_iter = 10
+    nIRAS_iter = 1
     min_CR_naive = np.inf
 
     enableSim = False
@@ -1322,14 +1333,48 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         # Reshape back to original 3D shape
         observations2IRAS = scaled_obs.reshape(batch, time, features)
         observations_noisy = scaled_noisy.reshape(batch, time, features)
+    
+    if runCoordinates_n_Velocities:
+        MercuryIdx = np.where(np.asarray(planets)==199)[0][0]
+        hypotheses_regulations_pearson = hypotheses_regulations_pearson[MercuryIdx:MercuryIdx+1]
+        observations_noisy = observations_noisy[MercuryIdx:MercuryIdx+1]
+        
+
+        
+        
+        if False:
+            # Step 1: Reshape by flattening the first dimension
+            observations_noisy_reshaped = observations_noisy.reshape(-1, observations_noisy.shape[2])  # Resulting shape: (50000, 4)
+            hypotheses_regulations_pearson_reshaped = hypotheses_regulations_pearson.reshape(-1, hypotheses_regulations_pearson.shape[2]) 
+            
+            # Step 2: Permute the first dimension
+            permuted_indices = np.random.permutation(observations_noisy_reshaped.shape[0])
+            observations_noisy_permuted = observations_noisy_reshaped[permuted_indices]
+            hypotheses_regulations_pearson_permuted = hypotheses_regulations_pearson_reshaped[permuted_indices]
+            
+            #observations_noisy = observations_noisy_permuted[None]
+            #hypotheses_regulations_pearson = hypotheses_regulations_pearson_permuted[None]
+            
+            observations_noisy = observations_noisy_permuted[:3*observations_tVec.shape[1]][None]
+            hypotheses_regulations_pearson = hypotheses_regulations_pearson_permuted[:3*observations_tVec.shape[1]][None]
+        
+    else:
+        hypotheses_regulations_pearson = hypotheses_regulations_pearson[:1]
+        observations_noisy = observations_noisy[:1]
+    hypotheses_regulations = None
 
     #print(f'{observations2IRAS.shape}')        
     #print(f'{observations_noisy.shape}')    
     #print(f'{hypotheses_regulations_pearson.shape}')  
     #print(f'{hypotheses_regulations}')   
     #return
+    if not planet is str:
+        planet_title = str(planet)
+    else:
+        planet_title = planet
+    
     for i in range(nIRAS_iter):
-        implicitPolyDictList = IRAS_train_script(observations2IRAS, observations_tVec, hypotheses_regulations, seriesForPearson=observations_noisy, hypothesesForPearson=hypotheses_regulations_pearson, titleStr=planet, nativeIRAS=True, nEpochs=500, degreeOfPolyFit=degreeOfPolyFit_pearson, onlyPolyMixTerms=onlyPolyMixTerms, externalReport=externalReport, features2ShuffleTogether=features2ShuffleTogether, playerPerPatient=playerPerPatient)
+        implicitPolyDictList = IRAS_train_script(observations2IRAS, observations_tVec, hypotheses_regulations, seriesForPearson=observations_noisy, hypothesesForPearson=hypotheses_regulations_pearson, titleStr=planet_title, nativeIRAS=True, nEpochs=500, degreeOfPolyFit=degreeOfPolyFit_pearson, onlyPolyMixTerms=onlyPolyMixTerms, externalReport=externalReport, features2ShuffleTogether=features2ShuffleTogether, playerPerPatient=playerPerPatient)
         if implicitPolyDictList[0]['CR_zeta1'] < min_CR_naive:
             minCR_implicitPolyDictList = implicitPolyDictList
             min_CR_naive = implicitPolyDictList[0]['CR_zeta1']
@@ -1688,6 +1733,14 @@ def print_IRAS_res(IRAS_runOnCoordinatesResults, ih):
     plt.grid()
     
     plt.show()
+    
+    plt.figure()#figsize=(16/4,9/2/4))
+    plt.scatter(x=comb, y=hyp, s=5, label=f'corr={str(round(pearsonCorr,2))}')
+    plt.xlabel(r'$g(a, e, T;\theta^{*}_{3})$', fontsize=18)
+    plt.ylabel(r'$2\log(T)-3\log(a)$', fontsize=18)
+    plt.legend(loc='upper right', fontsize=18)
+    plt.tight_layout()
+    plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/third.png', dpi=300)
 
 def replace_variables(input_string):
     replacements = {
@@ -1910,4 +1963,6 @@ def plot_manifold(IRAS_runOnCoordinatesResults, ih, true_anomaly_values_df, orbi
         
 
 
-    
+dataset = pickle.load(open('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/NASA_data.pkl', 'rb'))
+orbitalObs_df, orbitalParams_df, true_anomaly_values_df, multi_orbitalParams_df, multi_orbitalObs_df = dataset
+#runIRAS(multi_orbitalParams_df['target'].tolist()[:10], None, multi_orbitalObs_df, multi_orbitalParams_df, runOn2D=False, runOn2D_v=False, runCoordinates_n_Velocities=True, externalReport=True)
