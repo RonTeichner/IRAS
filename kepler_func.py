@@ -110,7 +110,8 @@ def get_orbital_observations(planets, epoch, obs_epochs):
     #ax.set_title("3D Orbits and Observations of Inner Planets")
     ax.legend(loc='upper right', bbox_to_anchor=(0.95, 0.78))
     plt.tight_layout()
-    plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/orbits.png', dpi=300)
+    plt.show()
+    #plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/orbits.png', dpi=300)
     
     
     
@@ -208,56 +209,57 @@ def get_orbital_observations(planets, epoch, obs_epochs):
                 'M': elements['M'][0],        # mean anomaly (deg)
                 'T': 360/elements['n'][0]     # period
             })
-            vec = obs.vectors()
+            if False:
+                vec = obs.vectors()
+                
             
-        
-            vec_df = vec.to_pandas() #Convert Astropy Table to pandas DataFrame
-            vec_df['target'] = target# Add planet name as a column
-            all_data.append(vec_df)
+                vec_df = vec.to_pandas() #Convert Astropy Table to pandas DataFrame
+                vec_df['target'] = target# Add planet name as a column
+                all_data.append(vec_df)
         except Exception as e:
             print(f"Failed to fetch data for target {target}: {e}")
 
     # Convert to DataFrame for easy handling
     multi_orbitalParams_df = pd.DataFrame(elements_data)
-    multi_orbitalObs_df = pd.concat(all_data, ignore_index=True)
+    
     
     multi_orbitalParams_df['rotation_matrix'] = multi_orbitalParams_df.apply(compute_rotation_matrix, axis=1)
     multi_orbitalParams_df['plane eq'] = multi_orbitalParams_df.apply(plane_eq_str, axis=1)
     multi_orbitalParams_df['orbitalPlaneNormal'] = multi_orbitalParams_df.apply(add_orbitalPlaneNormal, axis=1)
     
-    multi_orbitalObs_df['r'] = multi_orbitalObs_df.apply(lambda row: convert_to_r(row, multi_orbitalObs_df, multi_orbitalParams_df, 0), axis=1)
-    multi_orbitalObs_df['r_proj2OrbitalPlane'] = multi_orbitalObs_df.apply(lambda row: proj_r_2OrbitalPlane(row, multi_orbitalParams_df), axis=1)
-    multi_orbitalObs_df['r_2D'] = multi_orbitalObs_df.apply(lambda row: transform_2_2D(row, multi_orbitalParams_df, np.array([[1], [0], [0]])), axis=1)
-    
-    
-    
-    multi_orbitalObs_df['v'] = multi_orbitalObs_df.apply(lambda row: convert_to_r(row, multi_orbitalObs_df, multi_orbitalParams_df, 0, to_v=True), axis=1)
-    multi_orbitalObs_df['v_proj2OrbitalPlane'] = multi_orbitalObs_df.apply(lambda row: proj_r_2OrbitalPlane(row, multi_orbitalParams_df, to_v=True), axis=1)
-    multi_orbitalObs_df['v_2D'] = multi_orbitalObs_df.apply(lambda row: transform_2_2D(row, multi_orbitalParams_df, np.array([[1], [0], [0]]), to_v=True), axis=1)
-    
-    multi_orbitalObs_df['L'] = multi_orbitalObs_df.apply(lambda row: calc_L(row), axis=1)
-    multi_orbitalObs_df['L_2D'] = multi_orbitalObs_df.apply(lambda row: calc_L(row, twoD=True), axis=1)
-    
-    alpha = 1e-3
-    multi_orbitalObs_df['rNoisy'] = multi_orbitalObs_df.apply(lambda row: convert_to_r(row, multi_orbitalObs_df, multi_orbitalParams_df, alpha), axis=1)
-    multi_orbitalObs_df['vNoisy'] = multi_orbitalObs_df.apply(lambda row: convert_to_r(row, multi_orbitalObs_df, multi_orbitalParams_df, alpha, to_v=True), axis=1)
-    
-    multi_orbitalObs_df['r_2D_noisy'] = multi_orbitalObs_df.apply(lambda row: convert_to_r(row, multi_orbitalObs_df, multi_orbitalParams_df, alpha, workOn2D_est=True), axis=1)
-    multi_orbitalObs_df['v_2D_noisy'] = multi_orbitalObs_df.apply(lambda row: convert_to_r(row, multi_orbitalObs_df, multi_orbitalParams_df, alpha, workOn2D_est=True, to_v=True), axis=1)
-    
-    multi_orbitalObs_df['L_Noisy'] = multi_orbitalObs_df.apply(lambda row: calc_L(row, noisy=True), axis=1)
-    multi_orbitalObs_df['L_2D_noisy'] = multi_orbitalObs_df.apply(lambda row: calc_L(row, twoD=True, noisy=True), axis=1)
-    
-    multi_orbitalObs_df['r_tag'] = multi_orbitalObs_df.apply(lambda row: rotate_r_to_r_tag(row, multi_orbitalParams_df, False), axis=1)
-    
-    multi_orbitalObs_df['r_tagNoisy'] = multi_orbitalObs_df.apply(lambda row: rotate_r_to_r_tag(row, multi_orbitalParams_df, True), axis=1)
-
-    # Save to CSV
-    #df.to_csv('orbital_elements.csv', index=False)
-
+    if False:
+        multi_orbitalObs_df = pd.concat(all_data, ignore_index=True)
+        multi_orbitalObs_df['r'] = multi_orbitalObs_df.apply(lambda row: convert_to_r(row, multi_orbitalObs_df, multi_orbitalParams_df, 0), axis=1)
+        multi_orbitalObs_df['r_proj2OrbitalPlane'] = multi_orbitalObs_df.apply(lambda row: proj_r_2OrbitalPlane(row, multi_orbitalParams_df), axis=1)
+        multi_orbitalObs_df['r_2D'] = multi_orbitalObs_df.apply(lambda row: transform_2_2D(row, multi_orbitalParams_df, np.array([[1], [0], [0]])), axis=1)
         
+        
+        
+        multi_orbitalObs_df['v'] = multi_orbitalObs_df.apply(lambda row: convert_to_r(row, multi_orbitalObs_df, multi_orbitalParams_df, 0, to_v=True), axis=1)
+        multi_orbitalObs_df['v_proj2OrbitalPlane'] = multi_orbitalObs_df.apply(lambda row: proj_r_2OrbitalPlane(row, multi_orbitalParams_df, to_v=True), axis=1)
+        multi_orbitalObs_df['v_2D'] = multi_orbitalObs_df.apply(lambda row: transform_2_2D(row, multi_orbitalParams_df, np.array([[1], [0], [0]]), to_v=True), axis=1)
+        
+        multi_orbitalObs_df['L'] = multi_orbitalObs_df.apply(lambda row: calc_L(row), axis=1)
+        multi_orbitalObs_df['L_2D'] = multi_orbitalObs_df.apply(lambda row: calc_L(row, twoD=True), axis=1)
+        
+        alpha = 1e-3
+        multi_orbitalObs_df['rNoisy'] = multi_orbitalObs_df.apply(lambda row: convert_to_r(row, multi_orbitalObs_df, multi_orbitalParams_df, alpha), axis=1)
+        multi_orbitalObs_df['vNoisy'] = multi_orbitalObs_df.apply(lambda row: convert_to_r(row, multi_orbitalObs_df, multi_orbitalParams_df, alpha, to_v=True), axis=1)
+        
+        multi_orbitalObs_df['r_2D_noisy'] = multi_orbitalObs_df.apply(lambda row: convert_to_r(row, multi_orbitalObs_df, multi_orbitalParams_df, alpha, workOn2D_est=True), axis=1)
+        multi_orbitalObs_df['v_2D_noisy'] = multi_orbitalObs_df.apply(lambda row: convert_to_r(row, multi_orbitalObs_df, multi_orbitalParams_df, alpha, workOn2D_est=True, to_v=True), axis=1)
+        
+        multi_orbitalObs_df['L_Noisy'] = multi_orbitalObs_df.apply(lambda row: calc_L(row, noisy=True), axis=1)
+        multi_orbitalObs_df['L_2D_noisy'] = multi_orbitalObs_df.apply(lambda row: calc_L(row, twoD=True, noisy=True), axis=1)
+        
+        multi_orbitalObs_df['r_tag'] = multi_orbitalObs_df.apply(lambda row: rotate_r_to_r_tag(row, multi_orbitalParams_df, False), axis=1)
+        
+        multi_orbitalObs_df['r_tagNoisy'] = multi_orbitalObs_df.apply(lambda row: rotate_r_to_r_tag(row, multi_orbitalParams_df, True), axis=1)
     
-    
+        # Save to CSV
+        #df.to_csv('orbital_elements.csv', index=False)
+    else:
+        multi_orbitalObs_df = None
 
     return orbitalObs_df, orbitalParams_df, true_anomaly_values_df, multi_orbitalParams_df, multi_orbitalObs_df
 
@@ -761,15 +763,17 @@ def plot_est2D_ellipse(IRAS_runOnCoordinatesResultsDict, planet, orbitalParams_d
         beta = np.asarray([Obs['v_2D'].to_numpy()[i][1,0] for i in range(Obs.shape[0])])
         alpha_hat = np.asarray([Obs['v_2D_est'].to_numpy()[i][0,0] for i in range(Obs.shape[0])])
         beta_hat = np.asarray([Obs['v_2D_est'].to_numpy()[i][1,0] for i in range(Obs.shape[0])])
-        alpha_hat_proj = np.asarray([Obs['v_2D_est_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs.shape[0])])
-        beta_hat_proj = np.asarray([Obs['v_2D_est_proj2estEllipse'].to_numpy()[i][1,0] for i in range(Obs.shape[0])])
+        if False:
+            alpha_hat_proj = np.asarray([Obs['v_2D_est_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs.shape[0])])
+            beta_hat_proj = np.asarray([Obs['v_2D_est_proj2estEllipse'].to_numpy()[i][1,0] for i in range(Obs.shape[0])])
     else:
         alpha = np.asarray([Obs['r_2D'].to_numpy()[i][0,0] for i in range(Obs.shape[0])])
         beta = np.asarray([Obs['r_2D'].to_numpy()[i][1,0] for i in range(Obs.shape[0])])
         alpha_hat = np.asarray([Obs['r_2D_est'].to_numpy()[i][0,0] for i in range(Obs.shape[0])])
         beta_hat = np.asarray([Obs['r_2D_est'].to_numpy()[i][1,0] for i in range(Obs.shape[0])])
-        alpha_hat_proj = np.asarray([Obs['r_2D_est_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs.shape[0])])
-        beta_hat_proj = np.asarray([Obs['r_2D_est_proj2estEllipse'].to_numpy()[i][1,0] for i in range(Obs.shape[0])])
+        if False:
+            alpha_hat_proj = np.asarray([Obs['r_2D_est_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs.shape[0])])
+            beta_hat_proj = np.asarray([Obs['r_2D_est_proj2estEllipse'].to_numpy()[i][1,0] for i in range(Obs.shape[0])])
         
     indices = np.random.permutation(np.arange(len(alpha_hat)))[:30]
     plt.scatter(x=alpha_hat[indices], y=beta_hat[indices], marker='x', s=80, color=colors[planet], label=planet+' coordinates projected\nto IRAS estimated orbital plane')
@@ -790,29 +794,32 @@ def plot_est2D_ellipse(IRAS_runOnCoordinatesResultsDict, planet, orbitalParams_d
     if not to_v:
         plt.xlim([-0.5, 0.5])
         plt.ylim([-0.5, 0.5])
-        plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/'+planet+'2D_corr_'+f'{str(round(corr,3))}'+'_.png', dpi=300)
+        plt.show()
+        #plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/'+planet+'2D_corr_'+f'{str(round(corr,3))}'+'_.png', dpi=300)
     else:
-        plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/'+planet+'_v_2D_corr_'+f'{str(round(corr,3))}'+'_.png', dpi=300)
+        plt.show()
+        #plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/'+planet+'_v_2D_corr_'+f'{str(round(corr,3))}'+'_.png', dpi=300)
     
-    r_2D_est_deviation = []
-    for x,y in zip(alpha_hat, beta_hat):
-        r_2D_est_deviation.append(ellipse_model([A,B,C,h,k], x, y))
+    if False:
+        r_2D_est_deviation = []
+        for x,y in zip(alpha_hat, beta_hat):
+            r_2D_est_deviation.append(ellipse_model([A,B,C,h,k], x, y))
+            
         
-    
-    
-    r_2D_est_proj_deviation = []
-    for x,y in zip(alpha_hat_proj, beta_hat_proj):
-        r_2D_est_proj_deviation.append(ellipse_model([A,B,C,h,k], x, y))
-    
-    plt.figure()
-    if to_v:
-        #plt.plot(r_2D_est_deviation, label='v_2D_est_deviation')
-        plt.plot(r_2D_est_proj_deviation, label='v_2D_est_proj_deviation')
-    else:
-        #plt.plot(r_2D_est_deviation, label='r_2D_est_deviation')
-        plt.plot(r_2D_est_proj_deviation, label='r_2D_est_proj_deviation')
-    plt.legend()
-    plt.show()
+        
+        r_2D_est_proj_deviation = []
+        for x,y in zip(alpha_hat_proj, beta_hat_proj):
+            r_2D_est_proj_deviation.append(ellipse_model([A,B,C,h,k], x, y))
+        
+        plt.figure()
+        if to_v:
+            #plt.plot(r_2D_est_deviation, label='v_2D_est_deviation')
+            plt.plot(r_2D_est_proj_deviation, label='v_2D_est_proj_deviation')
+        else:
+            #plt.plot(r_2D_est_deviation, label='r_2D_est_deviation')
+            plt.plot(r_2D_est_proj_deviation, label='r_2D_est_proj_deviation')
+        plt.legend()
+        plt.show()
     
     
 def perifocal_trans_plot(planets, orbitalObs_df, orbitalParams_df):
@@ -1022,22 +1029,23 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
                 observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
                 coordinate_observations2D_est = np.concatenate((coordinate_observations2D_est, observations2D_est_single), axis=0)
                 
-                alpha = [Obs[planet]['r_2D_est_sign_y'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-                beta = [Obs[planet]['r_2D_est_sign_y'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-                observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
-                coordinate_observations2D_est_sign_y = np.concatenate((coordinate_observations2D_est_sign_y, observations2D_est_single), axis=0)
-                
-                alpha = [Obs[planet]['r_2D_est_sign_y_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-                beta = [Obs[planet]['r_2D_est_sign_y_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-                observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
-                coordinate_observations2D_est_sign_y_noisy = np.concatenate((coordinate_observations2D_est_sign_y_noisy, observations2D_est_single), axis=0)
-                
-                
-                
-                alpha = [Obs[planet]['r_2D_est_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-                beta = [Obs[planet]['r_2D_est_proj2estEllipse'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-                observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
-                coordinate_observations2D_estProj2Ellipse = np.concatenate((coordinate_observations2D_estProj2Ellipse, observations2D_est_single), axis=0)
+                if False:
+                    alpha = [Obs[planet]['r_2D_est_sign_y'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                    beta = [Obs[planet]['r_2D_est_sign_y'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                    observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
+                    coordinate_observations2D_est_sign_y = np.concatenate((coordinate_observations2D_est_sign_y, observations2D_est_single), axis=0)
+                    
+                    alpha = [Obs[planet]['r_2D_est_sign_y_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                    beta = [Obs[planet]['r_2D_est_sign_y_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                    observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
+                    coordinate_observations2D_est_sign_y_noisy = np.concatenate((coordinate_observations2D_est_sign_y_noisy, observations2D_est_single), axis=0)
+                    
+                    
+                    
+                    alpha = [Obs[planet]['r_2D_est_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                    beta = [Obs[planet]['r_2D_est_proj2estEllipse'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                    observations2D_est_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
+                    coordinate_observations2D_estProj2Ellipse = np.concatenate((coordinate_observations2D_estProj2Ellipse, observations2D_est_single), axis=0)
             
             alpha = [Obs[planet]['r_2D'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
             beta = [Obs[planet]['r_2D'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
@@ -1097,6 +1105,7 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
 
     
     coordinate_observations_noisy = np.zeros((0, Obs[planets[0]].shape[0], 3))
+    hypotheses_regulation_plane_noisy = np.zeros((0, Obs[planets[0]].shape[0], 1))
     coordinate_observations2D_est_noisy = np.zeros((0, Obs[planets[0]].shape[0], 2))
     coordinate_observations2D_estProj2Ellipse_noisy = np.zeros((0, Obs[planets[0]].shape[0], 2))
     coordinate_observations2D_noisy = np.zeros((0, Obs[planets[0]].shape[0], 2))
@@ -1111,6 +1120,13 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         coordinate_observations_noisy_single = np.concatenate((np.asarray(x_noisy)[:,None], np.asarray(y_noisy)[:,None], np.asarray(z_noisy)[:,None]), axis=1)[None]
         coordinate_observations_noisy = np.concatenate((coordinate_observations_noisy, coordinate_observations_noisy_single), axis=0)
         
+        
+        x_tag_noisy = [Obs[planet]['r_tagNoisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+        y_tag_noisy = [Obs[planet]['r_tagNoisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+        z_tag_noisy = [Obs[planet]['r_tagNoisy'].to_numpy()[i][2,0] for i in range(Obs[planet].shape[0])]
+        hypotheses_regulation_plane_single = np.asarray(z_tag_noisy)[None,:,None]
+        hypotheses_regulation_plane_noisy = np.concatenate((hypotheses_regulation_plane_noisy, hypotheses_regulation_plane_single), axis=0)
+        
         if runOn2D or runCoordinates_n_Velocities or runOn2D_v:
             x_noisy = [Obs[planet]['r_2D_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
             y_noisy = [Obs[planet]['r_2D_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
@@ -1123,10 +1139,11 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
                 coordinate_observations_noisy_single = np.concatenate((np.asarray(x_noisy)[:,None], np.asarray(y_noisy)[:,None]), axis=1)[None]
                 coordinate_observations2D_est_noisy = np.concatenate((coordinate_observations2D_est_noisy, coordinate_observations_noisy_single), axis=0)
                 
-                x_noisy = [Obs[planet]['r_2D_est_proj2estEllipse_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
-                y_noisy = [Obs[planet]['r_2D_est_proj2estEllipse_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
-                coordinate_observations_noisy_single = np.concatenate((np.asarray(x_noisy)[:,None], np.asarray(y_noisy)[:,None]), axis=1)[None]
-                coordinate_observations2D_estProj2Ellipse_noisy = np.concatenate((coordinate_observations2D_estProj2Ellipse_noisy, coordinate_observations_noisy_single), axis=0)
+                if False:
+                    x_noisy = [Obs[planet]['r_2D_est_proj2estEllipse_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])]
+                    y_noisy = [Obs[planet]['r_2D_est_proj2estEllipse_noisy'].to_numpy()[i][1,0] for i in range(Obs[planet].shape[0])]
+                    coordinate_observations_noisy_single = np.concatenate((np.asarray(x_noisy)[:,None], np.asarray(y_noisy)[:,None]), axis=1)[None]
+                    coordinate_observations2D_estProj2Ellipse_noisy = np.concatenate((coordinate_observations2D_estProj2Ellipse_noisy, coordinate_observations_noisy_single), axis=0)
                 
                 
         
@@ -1181,18 +1198,18 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
                 observations2D_est_noisy_single = np.concatenate((np.asarray(alpha)[:,None], np.asarray(beta)[:,None]), axis=1)[None]
                 observations2D_est_noisy = np.concatenate((observations2D_est_noisy, observations2D_est_noisy_single), axis=0)
                 
-            
-                observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_est_proj2estEllipse_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
-                L_2D_proj2Ellipse_noisy = np.concatenate((L_2D_proj2Ellipse_noisy, observations2D_est_noisy_single), axis=0)
-                
-                observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_est_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
-                L_2D_proj2Ellipse = np.concatenate((L_2D_proj2Ellipse, observations2D_est_noisy_single), axis=0)
-                
-                observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_est_sign'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
-                L_2D_est_sign = np.concatenate((L_2D_est_sign, observations2D_est_noisy_single), axis=0)
-                
-                observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_est_sign_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
-                L_2D_est_sign_noisy = np.concatenate((L_2D_est_sign_noisy, observations2D_est_noisy_single), axis=0)
+                if False:
+                    observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_est_proj2estEllipse_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
+                    L_2D_proj2Ellipse_noisy = np.concatenate((L_2D_proj2Ellipse_noisy, observations2D_est_noisy_single), axis=0)
+                    
+                    observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_est_proj2estEllipse'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
+                    L_2D_proj2Ellipse = np.concatenate((L_2D_proj2Ellipse, observations2D_est_noisy_single), axis=0)
+                    
+                    observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_est_sign'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
+                    L_2D_est_sign = np.concatenate((L_2D_est_sign, observations2D_est_noisy_single), axis=0)
+                    
+                    observations2D_est_noisy_single = np.asarray([Obs[planet]['L_2D_est_sign_noisy'].to_numpy()[i][0,0] for i in range(Obs[planet].shape[0])])[None,:,None]
+                    L_2D_est_sign_noisy = np.concatenate((L_2D_est_sign_noisy, observations2D_est_noisy_single), axis=0)
             
     
     
@@ -1208,7 +1225,7 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         observations_noisy = coordinate_observations2D_est_noisy
         observations2IRAS = coordinate_observations2D_est
         degreeOfPolyFit_pearson = [2]
-        features2ShuffleTogether = [[0], [1]]
+        features2ShuffleTogether = None#[[0], [1]]
     elif runCoordinates_n_Velocities:
         
         #observations_noisy = np.concatenate((coordinate_observations2D_estProj2Ellipse_noisy, coordinate_observations2D_estProj2Ellipse_noisy), axis=-1) #np.concatenate((coordinate_observations2D_est_noisy, v_observations2D_est_noisy), axis=-1)
@@ -1253,12 +1270,13 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         features2ShuffleTogether = [[0], [1]]
     else:
         observations_noisy = coordinate_observations_noisy
+        hypotheses_regulations_pearson = hypotheses_regulation_plane_noisy
         observations2IRAS = observations
-        degreeOfPolyFit_pearson = [1,2]
-        features2ShuffleTogether = [[0], [1], [2]]
+        degreeOfPolyFit_pearson = [1]
+        features2ShuffleTogether = None#[[0], [1], [2]]
         
     observations_tVec = np.repeat(np.arange(observations2IRAS.shape[1])[None,:,None], observations2IRAS.shape[0], 0)
-    if True:
+    if False:
         data={'time': observations_tVec.flatten(),
          'Id': np.repeat(np.arange(observations_tVec.shape[0]), observations_tVec.shape[1]),
          'batch': np.zeros(observations_tVec.shape[0]*observations_tVec.shape[1]),
@@ -1359,7 +1377,10 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
             hypotheses_regulations_pearson = hypotheses_regulations_pearson_permuted[:3*observations_tVec.shape[1]][None]
         
     else:
-        hypotheses_regulations_pearson = hypotheses_regulations_pearson[:1]
+        if runOn2D:
+            hypotheses_regulations_pearson = None
+        else:
+            hypotheses_regulations_pearson = hypotheses_regulations_pearson[:1]
         observations_noisy = observations_noisy[:1]
     hypotheses_regulations = None
 
@@ -1673,7 +1694,7 @@ def solve_for_x0(coefficients, intercept, x1, x2, x3, comb):
         return [(-b + sqrt_disc) / (2*a), (-b - sqrt_disc) / (2*a)]
 
 
-def print_IRAS_res(IRAS_runOnCoordinatesResults, ih):
+def print_IRAS_res(IRAS_runOnCoordinatesResults, ih, kepler3=False):
 
     s=0
     fontize = 10
@@ -1734,13 +1755,15 @@ def print_IRAS_res(IRAS_runOnCoordinatesResults, ih):
     
     plt.show()
     
-    plt.figure()#figsize=(16/4,9/2/4))
-    plt.scatter(x=comb, y=hyp, s=5, label=f'corr={str(round(pearsonCorr,2))}')
-    plt.xlabel(r'$g(a, e, T;\theta^{*}_{3})$', fontsize=18)
-    plt.ylabel(r'$2\log(T)-3\log(a)$', fontsize=18)
-    plt.legend(loc='upper right', fontsize=18)
-    plt.tight_layout()
-    plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/third.png', dpi=300)
+    if kepler3:
+        plt.figure()#figsize=(16/4,9/2/4))
+        plt.scatter(x=comb, y=hyp, s=5, label=f'corr={str(round(pearsonCorr,2))}')
+        plt.xlabel(r'$g(a, e, T;\theta^{*}_{3})$', fontsize=18)
+        plt.ylabel(r'$2\log(T)-3\log(a)$', fontsize=18)
+        plt.legend(loc='upper right', fontsize=18)
+        plt.tight_layout()
+        plt.show()
+        #plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/third.png', dpi=300)
 
 def replace_variables(input_string):
     replacements = {
@@ -1957,12 +1980,13 @@ def plot_manifold(IRAS_runOnCoordinatesResults, ih, true_anomaly_values_df, orbi
         ax.legend(loc='upper right', bbox_to_anchor=(0.98, 0.65))
         #ax.set_title(title3D)
         plt.tight_layout()
-        plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/'+planet+'Plane.png', dpi=300)
+        plt.show()
+        #plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/'+planet+'Plane.png', dpi=300)
         
     
         
 
 
-dataset = pickle.load(open('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/NASA_data.pkl', 'rb'))
-orbitalObs_df, orbitalParams_df, true_anomaly_values_df, multi_orbitalParams_df, multi_orbitalObs_df = dataset
+#dataset = pickle.load(open('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/NASA_data.pkl', 'rb'))
+#orbitalObs_df, orbitalParams_df, true_anomaly_values_df, multi_orbitalParams_df, multi_orbitalObs_df = dataset
 #runIRAS(multi_orbitalParams_df['target'].tolist()[:10], None, multi_orbitalObs_df, multi_orbitalParams_df, runOn2D=False, runOn2D_v=False, runCoordinates_n_Velocities=True, externalReport=True)

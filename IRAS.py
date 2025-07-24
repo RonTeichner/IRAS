@@ -160,6 +160,13 @@ class Combination_ANN(nn.Module):
     means = self.mu[None, None, :, :].expand(nSystem, nTime, -1, -1)
     Sigma_minus_half = self.Sigma_minus_half[None, None, :, :].expand(nSystem, nTime, -1, -1)
     tilde_z = observations[:, :, :, None]
+    
+    #print(f'observations.shape={observations.shape}')
+    #print(f'tilde_z.shape={tilde_z.shape}')
+    #print(f'means.shape={means.shape}')
+    #print(f'Sigma_minus_half.shape={Sigma_minus_half.shape}')
+    #return
+    
     nan_indices = tilde_z.isnan()
     tilde_z[nan_indices] = torch.zeros_like(tilde_z[nan_indices])
     normalized_tilde_z = torch.matmul(Sigma_minus_half, tilde_z - means)
@@ -953,10 +960,29 @@ def IRAS_train(observations, observations_tVec, hypotheses_regulations, titleStr
   dt = (observations_tVec[:,1:,0] - observations_tVec[:,:-1,0]).min()/10
   #print(f'dt = {dt}')
   #time.sleep(30)
+  
+  
+  
+  logAdded = False
+  if False:#observations.min() > 0:
+      observations = np.concatenate((observations, np.log(observations)), axis=2)
+      seriesForPearson = np.concatenate((seriesForPearson, np.log(seriesForPearson)), axis=2)
+      
+      #observations = np.log(observations)
+      #seriesForPearson = np.log(seriesForPearson)
+      
+      logAdded = True
 
   if features2ShuffleTogether is None:
-      features2ShuffleTogether = [[f] for f in range(observations.shape[2])]
+      if not logAdded:
+          features2ShuffleTogether = [[f] for f in range(observations.shape[2])]
+      else:
+          features2ShuffleTogether = [[f,int(f+observations.shape[2]/2)] for f in range(int(observations.shape[2]/2))]
+  else:
+      if logAdded:
+          assert False, 'log should be shuffled correctly'
       
+  
   #features2ShuffleTogether = [[f] for f in range(observations.shape[2])]
   
   # saving some statistics for future normalization
@@ -995,6 +1021,7 @@ def IRAS_train(observations, observations_tVec, hypotheses_regulations, titleStr
       obsPearsonReport = False
 
   #playerPerPatient = False
+  
   combinationPlayer = Combination_ANN(mu, Sigma_minus_half, features2ShuffleTogether, playerPerPatient=playerPerPatient, learnThrProcess=learnThrProcess, dt=dt)
   modelParams = combinationPlayer.parameters()
   if True or dtIRASFlag:
@@ -1063,8 +1090,6 @@ def IRAS_train_script(observations, observations_tVec, hypotheses_regulations, t
         seriesForPearson = seriesForPearson.copy()
     if not(hypothesesForPearson is None):
         hypothesesForPearson = hypothesesForPearson.copy()
-        
-    
     
     pearsonCorr = list()
     nRuns = 1
