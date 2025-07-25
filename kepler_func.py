@@ -13,6 +13,7 @@ from sklearn.preprocessing import StandardScaler
 import pandas as pd
 import numpy as np
 import pickle
+import os
 import torch
 from scipy.optimize import minimize
 from IRAS import IRAS_train_script
@@ -110,7 +111,8 @@ def get_orbital_observations(planets, epoch, obs_epochs):
     #ax.set_title("3D Orbits and Observations of Inner Planets")
     ax.legend(loc='upper right', bbox_to_anchor=(0.95, 0.78))
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
+
     #plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/orbits.png', dpi=300)
     
     
@@ -174,7 +176,8 @@ def get_orbital_observations(planets, epoch, obs_epochs):
         plt.scatter(x=Obs['vx'], y=Obs['vy'], s=1, label=planet)
         plt.xlabel('vx')
         plt.ylabel('vy')
-        plt.show()
+        plt.show(block=False)
+
         
     ######### many orbital params #########
 
@@ -650,7 +653,8 @@ def different_plots(planets, true_anomaly_values_df, orbitalObs_df):
     #fx.set_aspect('equal', adjustable='box')
     
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
+
     
 
 
@@ -794,10 +798,12 @@ def plot_est2D_ellipse(IRAS_runOnCoordinatesResultsDict, planet, orbitalParams_d
     if not to_v:
         plt.xlim([-0.5, 0.5])
         plt.ylim([-0.5, 0.5])
-        plt.show()
+        plt.show(block=False)
+
         #plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/'+planet+'2D_corr_'+f'{str(round(corr,3))}'+'_.png', dpi=300)
     else:
-        plt.show()
+        plt.show(block=False)
+
         #plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/'+planet+'_v_2D_corr_'+f'{str(round(corr,3))}'+'_.png', dpi=300)
     
     if False:
@@ -819,7 +825,8 @@ def plot_est2D_ellipse(IRAS_runOnCoordinatesResultsDict, planet, orbitalParams_d
             #plt.plot(r_2D_est_deviation, label='r_2D_est_deviation')
             plt.plot(r_2D_est_proj_deviation, label='r_2D_est_proj_deviation')
         plt.legend()
-        plt.show()
+        plt.show(block=False)
+
     
     
 def perifocal_trans_plot(planets, orbitalObs_df, orbitalParams_df):
@@ -861,7 +868,8 @@ def perifocal_trans_plot(planets, orbitalObs_df, orbitalParams_df):
             plt.plot(np.power(x_tag + a*e, 2) / np.power(a, 2) + np.power(y_tag, 2) / np.power(b, 2),'--',  label=r'$\frac{(x_t+ae)^2}{a^2}+\frac{y_t^2}{a^2(1-e^2)}$')
             plt.legend()
             plt.tight_layout()
-            plt.show()
+            plt.show(block=False)
+
     
         plt.figure()
         plt.suptitle(planet + ' ' + OrbitParams["plane eq"].values[0])
@@ -879,7 +887,8 @@ def perifocal_trans_plot(planets, orbitalObs_df, orbitalParams_df):
         plt.xlabel(r'$z_t$')
         plt.ylabel(r'$\frac{(x_t+ae)^2}{a^2}+\frac{y_t^2}{a^2(1-e^2)}$')
         plt.tight_layout()
-        plt.show()
+        plt.show(block=False)
+
         
 
 def solve_ellipse_y_minus_k(A, B, C, h, k, x):
@@ -1311,7 +1320,8 @@ def runIRAS(planets, true_anomaly_values_df, orbitalObs_df, orbitalParams_df, ru
         for hyp, planet in zip(hypotheses_regulations, planets):
             plt.plot(hyp[:,0], label=planet)
         plt.legend()
-        plt.show()
+        plt.show(block=False)
+
         return
     
         
@@ -1753,7 +1763,8 @@ def print_IRAS_res(IRAS_runOnCoordinatesResults, ih, kepler3=False):
     #plt.yticks([])
     plt.grid()
     
-    plt.show()
+    plt.show(block=False)
+
     
     if kepler3:
         plt.figure()#figsize=(16/4,9/2/4))
@@ -1762,7 +1773,8 @@ def print_IRAS_res(IRAS_runOnCoordinatesResults, ih, kepler3=False):
         plt.ylabel(r'$2\log(T)-3\log(a)$', fontsize=18)
         plt.legend(loc='upper right', fontsize=18)
         plt.tight_layout()
-        plt.show()
+        plt.show(block=False)
+
         #plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/third.png', dpi=300)
     return pearsonCorr
 
@@ -1853,7 +1865,8 @@ def plot_manifold(IRAS_runOnCoordinatesResults, ih, true_anomaly_values_df, orbi
         plt.grid(True)
         plt.legend()
         plt.axis('equal')
-        plt.show()
+        plt.show(block=False)
+
         
     else:
             
@@ -1920,7 +1933,8 @@ def plot_manifold(IRAS_runOnCoordinatesResults, ih, true_anomaly_values_df, orbi
             
             plt.suptitle(planet + r"; 2D Contour Slices of $P(x, y, z) = 0$ at Different $z_t$ Values")
             plt.tight_layout()
-            plt.show()
+            plt.show(block=False)
+
     
     
     
@@ -1981,19 +1995,14 @@ def plot_manifold(IRAS_runOnCoordinatesResults, ih, true_anomaly_values_df, orbi
         ax.legend(loc='upper right', bbox_to_anchor=(0.98, 0.65))
         #ax.set_title(title3D)
         plt.tight_layout()
-        plt.show()
+        plt.show(block=False)
+
         #plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/'+planet+'Plane.png', dpi=300)
         
     
         
 
 def getStatistics():
-    import matplotlib.pyplot as plt
-    import pandas as pd
-    import numpy as np
-    import os
-    import pickle
-    from kepler_func import *
     
     
     # Define planet IDs
@@ -2025,62 +2034,75 @@ def getStatistics():
         orbitalObs_df, orbitalParams_df, true_anomaly_values_df, multi_orbitalParams_df, multi_orbitalObs_df = dataset
     
     IRAS_runOnCoordinatesResultsDict = dict()
-    pearsonCorr_orbitalPlaneList = list()
-    for i in range(100):
-        IRAS_runOnCoordinatesResultsDict['Mercury'] = runIRAS('Mercury', true_anomaly_values_df, orbitalObs_df, orbitalParams_df, externalReport=True)
-        pearsonCorr = print_IRAS_res(IRAS_runOnCoordinatesResultsDict['Mercury'], 0)
-        pearsonCorr_orbitalPlaneList.append(pearsonCorr)
-        with open('pearsonCorr_orbitalPlaneList.pkl', 'wb') as file:
-            pickle.dump(pearsonCorr_orbitalPlaneList, file)
+    
+    if True:
+        pearsonCorr_orbitalPlaneList = list()
+        for i in range(100):
+            plt.close('all')
+            print(f'plane {i} out of 100')
+            IRAS_runOnCoordinatesResultsDict['Mercury'] = runIRAS('Mercury', true_anomaly_values_df, orbitalObs_df, orbitalParams_df, externalReport=False)
+            pearsonCorr = print_IRAS_res(IRAS_runOnCoordinatesResultsDict['Mercury'], 0)
+            pearsonCorr_orbitalPlaneList.append(pearsonCorr)
+            print(f'plane corr is {pearsonCorr}')
+            if np.abs(pearsonCorr) > 0.92:
+                break;
+            
+            #with open('pearsonCorr_orbitalPlaneList.pkl', 'wb') as file:
+            #    pickle.dump(pearsonCorr_orbitalPlaneList, file)
+    if True:
+        alpha = 1e-2
+        orbitalParams_df['est_orbitalPlaneNormal'] = orbitalParams_df.apply(lambda row: add_est_orbitalPlaneNormal(row, 'Mercury', IRAS_runOnCoordinatesResultsDict['Mercury']['implicitPolyDictList'][0]['coefficients'][1:][:,None], 'est_orbitalPlaneNormal'), axis=1)
+        orbitalObs_df['r_proj2EstOrbitalPlane'] = orbitalObs_df.apply(lambda row: proj_r_2EstOrbitalPlane(row, orbitalParams_df), axis=1)
+        orbitalObs_df['r_2D_est'] = orbitalObs_df.apply(lambda row: transform_2_2D(row, orbitalParams_df, np.array([[1], [0], [0]]), est=True), axis=1)
+        orbitalObs_df['r_2D_est_noisy'] = orbitalObs_df.apply(lambda row: convert_to_r(row, orbitalObs_df, orbitalParams_df, alpha, workOn2D_est=True, est=True), axis=1)
         
-    alpha = 1e-2
-    orbitalParams_df['est_orbitalPlaneNormal'] = orbitalParams_df.apply(lambda row: add_est_orbitalPlaneNormal(row, 'Mercury', IRAS_runOnCoordinatesResultsDict['Mercury']['implicitPolyDictList'][0]['coefficients'][1:][:,None], 'est_orbitalPlaneNormal'), axis=1)
-    orbitalObs_df['r_proj2EstOrbitalPlane'] = orbitalObs_df.apply(lambda row: proj_r_2EstOrbitalPlane(row, orbitalParams_df), axis=1)
-    orbitalObs_df['r_2D_est'] = orbitalObs_df.apply(lambda row: transform_2_2D(row, orbitalParams_df, np.array([[1], [0], [0]]), est=True), axis=1)
-    orbitalObs_df['r_2D_est_noisy'] = orbitalObs_df.apply(lambda row: convert_to_r(row, orbitalObs_df, orbitalParams_df, alpha, workOn2D_est=True, est=True), axis=1)
-    
-    pearsonCorr_ellipseList = list()
-    for i in range(100):
-        IRAS_runOnCoordinatesResultsDict['Mercury2D'] = runIRAS('Mercury', true_anomaly_values_df, orbitalObs_df, orbitalParams_df, runOn2D=True, externalReport=False)
-        pearsonCorr = IRAS_runOnCoordinatesResultsDict['Mercury2D']['implicitPolyDictList'][0]['ellipse_fit']['corr']
-        pearsonCorr_ellipseList.append(pearsonCorr)
-        with open('pearsonCorr_ellipseList.pkl', 'wb') as file:
-            pickle.dump(pearsonCorr_ellipseList, file)
-
-    opdf = multi_orbitalParams_df[['a','e','T']]
-    opdf = opdf.copy()
-    
-    print(f'a.max()/a.min() = {opdf["a"].max()/opdf["a"].min()}')
-    print(f'e.max()/e.min() = {opdf["e"].max()/opdf["e"].min()}')
-    print(f'T.max()/T.min() = {opdf["T"].max()/opdf["T"].min()}')
-    
-    #opdf['a']=np.log(opdf['a'])
-    #opdf['e']=np.log(opdf['e'])
-    #opdf['T']=np.log(opdf['T'])
-    
-    observations2IRAS = np.log(opdf.to_numpy()[None])
-    #observations2IRAS = opdf.to_numpy()[None]
-    observations_tVec = np.repeat(np.arange(observations2IRAS.shape[1])[None,:,None], observations2IRAS.shape[0], 0) 
-    hypotheses_regulations = None
-    
-    observations_noisy = observations2IRAS
-    for featureIdx in range(observations_noisy.shape[2]):
-        std = observations2IRAS[:,:,featureIdx].flatten().std()
-        observations_noisy[:,:,featureIdx] = observations2IRAS[:,:,featureIdx] + 1e-2*std*np.random.randn(observations2IRAS.shape[0], observations2IRAS.shape[1])
-    
-    hypotheses_regulations_pearson = (2*observations_noisy[:,:,-1] - 3*observations_noisy[:,:,0])[:,:,None]
-    
-    nIRAS_iter=100
-    IRAS_results_list = list()
-    for i in range(nIRAS_iter):
-        implicitPolyDictList = IRAS_train_script(observations2IRAS, observations_tVec, hypotheses_regulations, seriesForPearson=observations_noisy, hypothesesForPearson=hypotheses_regulations_pearson, titleStr='', nativeIRAS=True, nEpochs=500, degreeOfPolyFit=[1], onlyPolyMixTerms=False, externalReport=False, features2ShuffleTogether=None, playerPerPatient=False)
-
-        IRAS_results_list.append({'planet': '', 'observations2IRAS': observations2IRAS, 'degreeOfPolyFit': [1], 'implicitPolyDictList': implicitPolyDictList})
-    
-    IRAS_runOnCoordinatesResultsDict['k3'] = IRAS_results_list
-    CR_zeta1 = [l['implicitPolyDictList'][0]['CR_zeta1'].item() for l in IRAS_runOnCoordinatesResultsDict['k3']]
-    pearsonCorr_k3List = [np.abs(pd.Series(l['implicitPolyDictList'][0]['hypotheses_regulations'].flatten()).corr(pd.Series(l['implicitPolyDictList'][0]['combination'].detach().numpy().flatten()))) for l in IRAS_runOnCoordinatesResultsDict['k3']]
-    with open('pearsonCorr_k3List.pkl', 'wb') as file:
-        pickle.dump(pearsonCorr_k3List, file)
-
+        pearsonCorr_ellipseList = list()
+        for i in range(100):
+            plt.close('all')
+            print(f'ellipse {i} out of 100')
+            IRAS_runOnCoordinatesResultsDict['Mercury2D'] = runIRAS('Mercury', true_anomaly_values_df, orbitalObs_df, orbitalParams_df, runOn2D=True, externalReport=False)
+            pearsonCorr = IRAS_runOnCoordinatesResultsDict['Mercury2D']['implicitPolyDictList'][0]['ellipse_fit']['corr']
+            CR_zeta1 = IRAS_runOnCoordinatesResultsDict['Mercury2D']['implicitPolyDictList'][0]['CR_zeta1'].item()
+            pearsonCorr_ellipseList.append({'pearsonCorr':pearsonCorr, 'CR_zeta1':CR_zeta1})
+            with open('pearsonCorr_ellipseList.pkl', 'wb') as file:
+                pickle.dump(pearsonCorr_ellipseList, file)
+    if False:
+        opdf = multi_orbitalParams_df[['a','e','T']]
+        opdf = opdf.copy()
         
+        print(f'a.max()/a.min() = {opdf["a"].max()/opdf["a"].min()}')
+        print(f'e.max()/e.min() = {opdf["e"].max()/opdf["e"].min()}')
+        print(f'T.max()/T.min() = {opdf["T"].max()/opdf["T"].min()}')
+        
+        #opdf['a']=np.log(opdf['a'])
+        #opdf['e']=np.log(opdf['e'])
+        #opdf['T']=np.log(opdf['T'])
+        
+        observations2IRAS = np.log(opdf.to_numpy()[None])
+        #observations2IRAS = opdf.to_numpy()[None]
+        observations_tVec = np.repeat(np.arange(observations2IRAS.shape[1])[None,:,None], observations2IRAS.shape[0], 0) 
+        hypotheses_regulations = None
+        
+        observations_noisy = observations2IRAS
+        for featureIdx in range(observations_noisy.shape[2]):
+            std = observations2IRAS[:,:,featureIdx].flatten().std()
+            observations_noisy[:,:,featureIdx] = observations2IRAS[:,:,featureIdx] + 1e-2*std*np.random.randn(observations2IRAS.shape[0], observations2IRAS.shape[1])
+        
+        hypotheses_regulations_pearson = (2*observations_noisy[:,:,-1] - 3*observations_noisy[:,:,0])[:,:,None]
+        
+        nIRAS_iter=100
+        IRAS_results_list = list()
+        for i in range(nIRAS_iter):
+            plt.close('all')
+            print(f'k3 {i} out of 100')
+            implicitPolyDictList = IRAS_train_script(observations2IRAS, observations_tVec, hypotheses_regulations, seriesForPearson=observations_noisy, hypothesesForPearson=hypotheses_regulations_pearson, titleStr='', nativeIRAS=True, nEpochs=500, degreeOfPolyFit=[1], onlyPolyMixTerms=False, externalReport=False, features2ShuffleTogether=None, playerPerPatient=False)
+    
+            IRAS_results_list.append({'planet': '', 'observations2IRAS': observations2IRAS, 'degreeOfPolyFit': [1], 'implicitPolyDictList': implicitPolyDictList})
+        
+        IRAS_runOnCoordinatesResultsDict['k3'] = IRAS_results_list
+        CR_zeta1 = [l['implicitPolyDictList'][0]['CR_zeta1'].item() for l in IRAS_runOnCoordinatesResultsDict['k3']]
+        pearsonCorr_k3List = [np.abs(pd.Series(l['implicitPolyDictList'][0]['hypotheses_regulations'].flatten()).corr(pd.Series(l['implicitPolyDictList'][0]['combination'].detach().numpy().flatten()))) for l in IRAS_runOnCoordinatesResultsDict['k3']]
+        with open('pearsonCorr_k3List.pkl', 'wb') as file:
+            pickle.dump(pearsonCorr_k3List, file)
+    
+            
