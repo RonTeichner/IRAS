@@ -1764,6 +1764,7 @@ def print_IRAS_res(IRAS_runOnCoordinatesResults, ih, kepler3=False):
         plt.tight_layout()
         plt.show()
         #plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/third.png', dpi=300)
+    return pearsonCorr
 
 def replace_variables(input_string):
     replacements = {
@@ -1986,7 +1987,100 @@ def plot_manifold(IRAS_runOnCoordinatesResults, ih, true_anomaly_values_df, orbi
     
         
 
+def getStatistics():
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    import numpy as np
+    import os
+    import pickle
+    from kepler_func import *
+    
+    
+    # Define planet IDs
+    planets = {
+        'Mercury': 199,
+        'Venus': 299,
+        'Earth': 399,
+        'Mars': 499
+    }
+    
+    colors = {
+            'Mercury': 'gray',
+            'Venus': 'orange',
+            'Earth': 'blue',
+            'Mars': 'red'
+        }
+        
+    # Define epoch for orbital elements
+    epoch = {'start': '2008-01-06', 'stop': '2009-01-06', 'step': '30d'}
+    # Define observation time range
+    obs_epochs = {'start': '1993-01-01', 'stop': '2023-01-01', 'step': '30d'}
+    
+    if not os.path.exists('NASA_data.pkl'):
+        orbitalObs_df, orbitalParams_df, true_anomaly_values_df, multi_orbitalParams_df, multi_orbitalObs_df = get_orbital_observations(planets, epoch, obs_epochs)
+        with open('NASA_data.pkl', 'wb') as file:
+            pickle.dump([orbitalObs_df, orbitalParams_df, true_anomaly_values_df, multi_orbitalParams_df, multi_orbitalObs_df], file)
+    else:
+        dataset = pickle.load(open('NASA_data.pkl', 'rb'))
+        orbitalObs_df, orbitalParams_df, true_anomaly_values_df, multi_orbitalParams_df, multi_orbitalObs_df = dataset
+    
+    IRAS_runOnCoordinatesResultsDict = dict()
+    pearsonCorr_orbitalPlaneList = list()
+    for i in range(100):
+        IRAS_runOnCoordinatesResultsDict['Mercury'] = runIRAS('Mercury', true_anomaly_values_df, orbitalObs_df, orbitalParams_df, externalReport=True)
+        pearsonCorr = print_IRAS_res(IRAS_runOnCoordinatesResultsDict['Mercury'], 0)
+        pearsonCorr_orbitalPlaneList.append(pearsonCorr)
+        with open('pearsonCorr_orbitalPlaneList.pkl', 'wb') as file:
+            pickle.dump(pearsonCorr_orbitalPlaneList, file)
+        
+    alpha = 1e-2
+    orbitalParams_df['est_orbitalPlaneNormal'] = orbitalParams_df.apply(lambda row: add_est_orbitalPlaneNormal(row, 'Mercury', IRAS_runOnCoordinatesResultsDict['Mercury']['implicitPolyDictList'][0]['coefficients'][1:][:,None], 'est_orbitalPlaneNormal'), axis=1)
+    orbitalObs_df['r_proj2EstOrbitalPlane'] = orbitalObs_df.apply(lambda row: proj_r_2EstOrbitalPlane(row, orbitalParams_df), axis=1)
+    orbitalObs_df['r_2D_est'] = orbitalObs_df.apply(lambda row: transform_2_2D(row, orbitalParams_df, np.array([[1], [0], [0]]), est=True), axis=1)
+    orbitalObs_df['r_2D_est_noisy'] = orbitalObs_df.apply(lambda row: convert_to_r(row, orbitalObs_df, orbitalParams_df, alpha, workOn2D_est=True, est=True), axis=1)
+    
+    pearsonCorr_ellipseList = list()
+    for i in range(100):
+        IRAS_runOnCoordinatesResultsDict['Mercury2D'] = runIRAS('Mercury', true_anomaly_values_df, orbitalObs_df, orbitalParams_df, runOn2D=True, externalReport=False)
+        pearsonCorr = IRAS_runOnCoordinatesResultsDict['Mercury2D']['implicitPolyDictList'][0]['ellipse_fit']['corr']
+        pearsonCorr_ellipseList.append(pearsonCorr)
+        with open('pearsonCorr_ellipseList.pkl', 'wb') as file:
+            pickle.dump(pearsonCorr_ellipseList, file)
 
-#dataset = pickle.load(open('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/NASA_data.pkl', 'rb'))
-#orbitalObs_df, orbitalParams_df, true_anomaly_values_df, multi_orbitalParams_df, multi_orbitalObs_df = dataset
-#runIRAS(multi_orbitalParams_df['target'].tolist()[:10], None, multi_orbitalObs_df, multi_orbitalParams_df, runOn2D=False, runOn2D_v=False, runCoordinates_n_Velocities=True, externalReport=True)
+    opdf = multi_orbitalParams_df[['a','e','T']]
+    opdf = opdf.copy()
+    
+    print(f'a.max()/a.min() = {opdf["a"].max()/opdf["a"].min()}')
+    print(f'e.max()/e.min() = {opdf["e"].max()/opdf["e"].min()}')
+    print(f'T.max()/T.min() = {opdf["T"].max()/opdf["T"].min()}')
+    
+    #opdf['a']=np.log(opdf['a'])
+    #opdf['e']=np.log(opdf['e'])
+    #opdf['T']=np.log(opdf['T'])
+    
+    observations2IRAS = np.log(opdf.to_numpy()[None])
+    #observations2IRAS = opdf.to_numpy()[None]
+    observations_tVec = np.repeat(np.arange(observations2IRAS.shape[1])[None,:,None], observations2IRAS.shape[0], 0) 
+    hypotheses_regulations = None
+    
+    observations_noisy = observations2IRAS
+    for featureIdx in range(observations_noisy.shape[2]):
+        std = observations2IRAS[:,:,featureIdx].flatten().std()
+        observations_noisy[:,:,featureIdx] = observations2IRAS[:,:,featureIdx] + 1e-2*std*np.random.randn(observations2IRAS.shape[0], observations2IRAS.shape[1])
+    
+    hypotheses_regulations_pearson = (2*observations_noisy[:,:,-1] - 3*observations_noisy[:,:,0])[:,:,None]
+    
+    nIRAS_iter=100
+    IRAS_results_list = list()
+    for i in range(nIRAS_iter):
+        implicitPolyDictList = IRAS_train_script(observations2IRAS, observations_tVec, hypotheses_regulations, seriesForPearson=observations_noisy, hypothesesForPearson=hypotheses_regulations_pearson, titleStr='', nativeIRAS=True, nEpochs=500, degreeOfPolyFit=[1], onlyPolyMixTerms=False, externalReport=False, features2ShuffleTogether=None, playerPerPatient=False)
+
+        IRAS_results_list.append({'planet': '', 'observations2IRAS': observations2IRAS, 'degreeOfPolyFit': [1], 'implicitPolyDictList': implicitPolyDictList})
+    
+    IRAS_runOnCoordinatesResultsDict['k3'] = IRAS_results_list
+    CR_zeta1 = [l['implicitPolyDictList'][0]['CR_zeta1'].item() for l in IRAS_runOnCoordinatesResultsDict['k3']]
+    pearsonCorr_k3List = [np.abs(pd.Series(l['implicitPolyDictList'][0]['hypotheses_regulations'].flatten()).corr(pd.Series(l['implicitPolyDictList'][0]['combination'].detach().numpy().flatten()))) for l in IRAS_runOnCoordinatesResultsDict['k3']]
+    with open('pearsonCorr_k3List.pkl', 'wb') as file:
+        pickle.dump(pearsonCorr_k3List, file)
+
+        
