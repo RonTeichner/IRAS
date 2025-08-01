@@ -13,5 +13,7 @@ with observations having shape of (N x T x F) and observations_tVec (N x T x 1).
 
 Code for the paper "Analysis of the Identifying Regulation with Adversarial Surrogates Algorithm" is at IRAS_Ribosome_RQ_paper.ipynb.
 
-Code for the paper "Autonomous Discovery of Physical Laws via Adversarial Surrogates: Rediscovering Kepler’s Laws from Observational Data" is at Kepler_IRAS.ipynb.
-
+Code for the paper "Autonomous Discovery of Physical Laws via Adversarial Surrogates: Rediscovering Kepler’s Laws from Observational Data" is at: 
+[Kepler_IRAS.ipynb](Kepler_IRAS.ipynb) - Results for Mercury and Kelper's third law
+[Kepler_IRAS_Venus.ipynb](Kepler_IRAS_Venus.ipynb) - Results for Venus
+[Kepler_IRAS_Mars.ipynb](Kepler_IRAS_Mars.ipynb) - Results for Mars

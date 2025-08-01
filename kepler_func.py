@@ -752,16 +752,22 @@ def plot_est2D_ellipse(IRAS_runOnCoordinatesResultsDict, planet, orbitalParams_d
     plt.scatter(sun_coordinates_on_plane[0,0], sun_coordinates_on_plane[1,0], color='yellow', label='Sun', s=100)
     plt.scatter(x=[focci[0][0], focci[1][0]], y=[focci[0][1], focci[1][1]], marker='+', s=100, color='blue', label='focci')
     #plt.title("Ellipse: A(x−h)^2 + B(x−h)(y−k) + C(y−k)^2 = 1")
+    
     if not to_v:
-        plt.text(-0.3, 0.2, r'$\hat{a} = $' + f'{str(round(axes_eccentricity["a"],3))}   ', fontsize=14)# + r'$a = $' + f'{str(round(OrbitParams["a"][0], 3))}', fontsize=12)
-        plt.text(-0.3, 0.1, r'$\hat{e} = $' + f'{str(round(axes_eccentricity["e"],3))}   ', fontsize=14)# + r'$e = $' + f'{str(round(OrbitParams["e"][0], 3))}', fontsize=12)
+        if planet == 'Mercury':
+            plt.text(-0.3, 0.2, r'$\hat{a} = $' + f'{str(round(axes_eccentricity["a"],3))}   ', fontsize=14)# + r'$a = $' + f'{str(round(OrbitParams["a"][0], 3))}', fontsize=12)
+            plt.text(-0.3, 0.1, r'$\hat{e} = $' + f'{str(round(axes_eccentricity["e"],3))}   ', fontsize=14)# + r'$e = $' + f'{str(round(OrbitParams["e"][0], 3))}', fontsize=12)
+        elif planet in ['Venus', 'Mars']:
+            plt.text(-0.3, 0.3, r'$\hat{a} = $' + f'{str(round(axes_eccentricity["a"],3))}   ', fontsize=14)# + r'$a = $' + f'{str(round(OrbitParams["a"][0], 3))}', fontsize=12)
+            plt.text(-0.3, 0.1, r'$\hat{e} = $' + f'{str(round(axes_eccentricity["e"],3))}   ', fontsize=14)# + r'$e = $' + f'{str(round(OrbitParams["e"][0], 3))}', fontsize=12)
+    
     #plt.title("IRAS-estimated ellipse")
     plt.xlabel(r"$x_{\hat{n}}$")
     plt.ylabel(r"$y_{\hat{n}}$")
     plt.gca().set_aspect('equal', adjustable='box')
     plt.grid(True)
     
-    Obs = orbitalObs_df[orbitalObs_df['target'] == 'Mercury']
+    Obs = orbitalObs_df[orbitalObs_df['target'] == planet]
     if to_v:
         alpha = np.asarray([Obs['v_2D'].to_numpy()[i][0,0] for i in range(Obs.shape[0])])
         beta = np.asarray([Obs['v_2D'].to_numpy()[i][1,0] for i in range(Obs.shape[0])])
@@ -781,7 +787,8 @@ def plot_est2D_ellipse(IRAS_runOnCoordinatesResultsDict, planet, orbitalParams_d
         
     indices = np.random.permutation(np.arange(len(alpha_hat)))[:30]
     plt.scatter(x=alpha_hat[indices], y=beta_hat[indices], marker='x', s=80, color=colors[planet], label=planet+' coordinates projected\nto IRAS estimated orbital plane')
-    
+    #print(f'alpha_hat[:]={alpha_hat[:]}')
+    #print(f'beta_hat[:]={beta_hat[:]}')
     #plt.legend(loc='lower left')
     
     
@@ -796,8 +803,15 @@ def plot_est2D_ellipse(IRAS_runOnCoordinatesResultsDict, planet, orbitalParams_d
     plt.legend(handles=legend_elements, loc='lower left')
 
     if not to_v:
-        plt.xlim([-0.5, 0.5])
-        plt.ylim([-0.5, 0.5])
+        if planet == 'Mercury':
+            plt.xlim([-0.5, 0.5])
+            plt.ylim([-0.5, 0.5])
+        elif planet in ['Venus']:
+            plt.xlim([-1.5, 1.5])
+            plt.ylim([-1.5, 1.5])
+        elif planet in ['Mars']:
+            plt.xlim([-2.0, 2.0])
+            plt.ylim([-2.0, 2.0])
         plt.show(block=False)
 
         #plt.savefig('/Users/ron.teichner/Library/CloudStorage/OneDrive-Technion/Kepler/'+planet+'2D_corr_'+f'{str(round(corr,3))}'+'_.png', dpi=300)
@@ -1969,8 +1983,15 @@ def plot_manifold(IRAS_runOnCoordinatesResults, ih, true_anomaly_values_df, orbi
         fig = plt.figure(figsize=(10, 8))
         fig.suptitle(title3D, y=0.25, fontsize=16)  # Adjust 'y' to move the title lower (default is ~0.98)
         ax = fig.add_subplot(111, projection='3d')
-        mesh = ax.plot_trisurf(verts[:, 0], verts[:, 1], faces, verts[:, 2],
-                               cmap='Spectral', lw=1, alpha=0.8)
+        
+        #mesh = ax.plot_trisurf(verts[:, 0], verts[:, 1], faces, verts[:, 2], cmap='Spectral', lw=1, alpha=0.8)
+        
+        
+        mesh = ax.plot_trisurf(
+        verts[:, 0], verts[:, 1], faces, verts[:, 2],
+        facecolors='none', edgecolor='black', linewidth=0.01, alpha=0.1)
+
+
         
         indices = np.random.permutation(np.arange(len(x_Obs)))[:30]
         
