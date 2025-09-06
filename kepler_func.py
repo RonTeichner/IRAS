@@ -1550,8 +1550,211 @@ def ellipse_axes_and_eccentricity(A, B, C, h, k):
 
     return {'a':a, 'b':b, 'e':eccentricity}
 
+import numpy as np
 
-def fit_ellipse_analytic(observations2IRAS, singleBatch, combination, intercept, coefficients):
+
+
+def _normalize_conic_to_center(A, B, C, D_, E, F, h, k, eps=1e-12):
+    """
+    Shift to center (h,k) and scale so the centered quadratic equals 1:
+      A' x'^2 + B' x' y' + C' y'^2 = 1
+    We auto-fix the arbitrary sign/scale ambiguity from SVD:
+      - If F_c > 0 we flip all coefficients.
+      - If the quadratic form is not PD, we try a flip once.
+    """
+    def centered_constant(A, B, C, D_, E, F, h, k):
+        return A*h*h + B*h*k + C*k*k + D_*h + E*k + F
+
+    def normalize(A, B, C, F_c):
+        # Make the RHS +1, i.e., scale by -1/F_c
+        scale = -1.0 / F_c
+        return A * scale, B * scale, C * scale, scale
+
+    F_c = centered_constant(A, B, C, D_, E, F, h, k)
+    if F_c >= 0:
+        A, B, C, D_, E, F = -A, -B, -C, -D_, -E, -F
+        F_c = -F_c
+
+    if abs(F_c) < eps:
+        F_c = -eps
+
+    A_p, B_p, C_p, scale_factor = normalize(A, B, C, F_c)
+
+    # Check positive definiteness of the quadratic form
+    Mq = np.array([[A_p, B_p/2.0], [B_p/2.0, C_p]], dtype=float)
+    evals = np.linalg.eigvalsh(Mq)
+
+    if np.any(evals <= 0):
+        # Try flipping once more (rare if data is reasonable)
+        A, B, C, D_, E, F = -A, -B, -C, -D_, -E, -F
+        F_c = centered_constant(A, B, C, D_, E, F, h, k)
+        if F_c >= 0:
+            F_c = -abs(F_c) if F_c != 0 else -eps
+        A_p, B_p, C_p, scale_factor = normalize(A, B, C, F_c)
+        Mq = np.array([[A_p, B_p/2.0], [B_p/2.0, C_p]], dtype=float)
+        evals = np.linalg.eigvalsh(Mq)
+        if np.any(evals <= 0):
+            # As a last resort, fall back to your mean(Z) scaling
+            # (keeps code running, but marks that normalization was not ideal)
+            # You can log a warning here if you like.
+            pass
+
+    return A_p, B_p, C_p, F_c, scale_factor
+
+
+def _axes_and_theta_from_centered_quadratic(Ap, Bp, Cp):
+    """
+    Given the centered, scaled quadratic Ap x^2 + Bp xy + Cp y^2 = 1,
+    compute semi-axes (a >= b) and rotation angle theta (radians).
+
+    We use the quadratic form matrix M = [[Ap, Bp/2],[Bp/2, Cp]] whose
+    eigenvalues are 1/a^2 and 1/b^2 (order depends on magnitude).
+    """
+    M = np.array([[Ap, Bp/2.0],
+                  [Bp/2.0, Cp]], dtype=float)
+    evals, evecs = np.linalg.eigh(M)  # guaranteed symmetric
+    # Semi-axes are inverse sqrt of eigenvalues
+    if np.any(evals <= 0):
+        raise ValueError(f"Quadratic matrix not positive definite, eigenvalues: {evals}")
+    # Sort so that a >= b
+    idx = np.argsort(evals)  # smallest first -> largest axis
+    lam1, lam2 = evals[idx[0]], evals[idx[1]]
+    v1 = evecs[:, idx[0]]  # eigenvector for lam1 (major axis direction)
+    a = 1.0 / np.sqrt(lam1)
+    b = 1.0 / np.sqrt(lam2)
+    # Rotation angle of major axis w.r.t. x-axis
+    theta = np.arctan2(v1[1], v1[0])
+    # Normalize theta to [-pi/2, pi/2] for readability
+    if theta > np.pi/2:
+        theta -= np.pi
+    elif theta < -np.pi/2:
+        theta += np.pi
+    return a, b, theta
+
+def _radial_residuals_AU(alpha, beta, h, k, a, b, theta):
+    """
+    Geometric residuals in AU using radial distance along the direction
+    from the center to each point (alpha, beta):
+      residual = rho - r_ellipse(phi)
+    where rho is the point's radius in the ellipse frame and
+    r_ellipse(phi) = (a*b)/sqrt((b*cos phi)^2 + (a*sin phi)^2).
+
+    Returns residuals (signed), abs_residuals.
+    """
+    # Shift to center
+    x = alpha - h
+    y = beta - k
+    c, s = np.cos(theta), np.sin(theta)
+    # Rotate into ellipse principal axes frame
+    xp =  c * x + s * y
+    yp = -s * x + c * y
+    rho = np.hypot(xp, yp)  # distance from center
+    phi = np.arctan2(yp, xp)
+    # Radius of ellipse in direction phi
+    denom = np.sqrt((b * np.cos(phi))**2 + (a * np.sin(phi))**2)
+    r_phi = (a * b) / denom
+    residual = rho - r_phi
+    return residual, np.abs(residual)
+
+def _bootstrap_ci(values, stat_fn, n_boot=1000, random_state=42, alpha=0.05):
+    """
+    Generic bootstrap CI for a statistic (e.g., RMSE). Returns (low, high).
+    """
+    rng = np.random.default_rng(random_state)
+    n = len(values)
+    stats = []
+    for _ in range(n_boot):
+        idx = rng.integers(0, n, size=n)
+        stats.append(stat_fn(values[idx]))
+    stats = np.array(stats)
+    low = np.quantile(stats, alpha/2)
+    high = np.quantile(stats, 1 - alpha/2)
+    return float(low), float(high)
+
+def _rmse(x):
+    return float(np.sqrt(np.mean(x**2)))
+
+def fit_ellipse_analytic(observations2IRAS, singleBatch, combination, intercept, coefficients,
+                         n_boot=1000, seed=42):
+    """
+    Returns dictionary with:
+      - ellipse parameters (A',B',C',h,k), axes (a,b), rotation theta
+      - Pearson correlation (your existing metric)
+      - Geometric error metrics (AU): rmse, max_abs_error, 95% bounds
+    """
+    # Prepare inputs
+    observations2IRAS = observations2IRAS.reshape(-1, 2)
+    singleBatch = singleBatch.reshape(-1, 2).numpy()
+    combination = combination.reshape(-1, 1).detach().numpy()
+
+    alpha, beta = observations2IRAS[:, 0], observations2IRAS[:, 1]
+    alpha_noisy, beta_noisy, l_data = singleBatch[:, 0], singleBatch[:, 1], combination[:, 0]
+
+    # Design matrix for conic fitting: A x^2 + B x y + C y^2 + D x + E y + F = 0
+    D = np.vstack([alpha**2, alpha * beta, beta**2, alpha, beta, np.ones_like(alpha)]).T
+
+    # Solve via SVD (algebraic least squares)
+    _, _, V = np.linalg.svd(D, full_matrices=False)
+    conic_params = V[-1, :]  # last row
+    A, B, C, D_, E, F = conic_params
+
+    # Compute center (h,k) of the ellipse from linear terms
+    M = np.array([[2*A, B], [B, 2*C]], dtype=float)
+    rhs = np.array([-D_, -E], dtype=float)
+    center = np.linalg.solve(M, rhs)
+    h, k = center
+
+    # >>> NEW: exact normalization with centered constant <<<
+    Ap, Bp, Cp, F_c, scale_factor = _normalize_conic_to_center(A, B, C, D_, E, F, h, k)
+
+    # Sanity checks for ellipse
+    discr = Bp**2 - 4*Ap*Cp
+    if discr >= 0 or Ap <= 0 or Cp <= 0:
+        # Not an ellipse in this fit; raise or handle accordingly
+        raise ValueError(f"Fitted conic is not an ellipse: Ap={Ap}, Bp={Bp}, Cp={Cp}, disc={discr}")
+
+    # Axes and rotation
+    a, b, theta = _axes_and_theta_from_centered_quadratic(Ap, Bp, Cp)
+
+    # Equation string (optional: update to reflect normalized centered form)
+    optimized_params = [Ap, Bp, Cp, h, k]
+    equation_str = ellipse_equation_string(optimized_params)
+
+    # Your original neural-vs-analytic correlation (kept as-is)
+    predicted_l_data = ellipse_model(optimized_params, alpha_noisy, beta_noisy)
+    corr = pd.Series(predicted_l_data).corr(pd.Series(l_data))
+
+    # >>> NEW: geometric residuals in AU (radial residuals) <<<
+    residual, abs_residual = _radial_residuals_AU(alpha, beta, h, k, a, b, theta)
+    rmse_AU = float(np.sqrt(np.mean(residual**2)))
+    max_abs_AU = float(np.max(abs_residual))
+
+    # 95% error "bound": the 97.5% quantile of |error| (and 2.5% for symmetry)
+    q_l, q_u = np.quantile(abs_residual, [0.025, 0.975])
+    abs_error_q95 = (float(q_l), float(q_u))
+
+    # 95% bootstrap CI for RMSE
+    rmse_ci = _bootstrap_ci(residual, stat_fn=_rmse, n_boot=n_boot, random_state=seed, alpha=0.05)
+
+    return {
+        'ellipse_eq': equation_str,
+        'corr': corr,
+        'ellipse_params': {'A': float(Ap), 'B': float(Bp), 'C': float(Cp), 'h': float(h), 'k': float(k)},
+        'ellipse_rot_angle': float(theta),
+        'axes': {'a': float(a), 'b': float(b)},
+        'focci': compute_foci(Ap, Bp, Cp, h, k),
+
+        # >>> NEW: error metrics the reviewer asked for <<<
+        'fit_errors': {
+            'rmse_AU': rmse_AU,
+            'max_abs_AU': max_abs_AU,
+            'abs_error_q95_AU': abs_error_q95,   # an "error bound" (not a CI on mean)
+            'rmse_bootstrap_CI_AU': rmse_ci      # 95% CI on RMSE via bootstrap
+        }
+    }
+
+
+def fit_ellipse_analytic_old(observations2IRAS, singleBatch, combination, intercept, coefficients):
     #print(f'singleBatch.shape{singleBatch.shape}, combination.shape={combination.shape}')
     observations2IRAS, singleBatch, combination = observations2IRAS.reshape(-1, 2), singleBatch.reshape(-1, 2).numpy(), combination.reshape(-1, 1).detach().numpy()
     #print(f'singleBatch.shape{singleBatch.shape}, combination.shape={combination.shape}')
@@ -1987,9 +2190,18 @@ def plot_manifold(IRAS_runOnCoordinatesResults, ih, true_anomaly_values_df, orbi
         #mesh = ax.plot_trisurf(verts[:, 0], verts[:, 1], faces, verts[:, 2], cmap='Spectral', lw=1, alpha=0.8)
         
         
+        #mesh = ax.plot_trisurf(
+        #verts[:, 0], verts[:, 1], faces, verts[:, 2],
+        #facecolors='none', edgecolor='black', linewidth=0.01, alpha=0.1)
+        
+        # Option A: wireframe-like (transparent faces)
         mesh = ax.plot_trisurf(
-        verts[:, 0], verts[:, 1], faces, verts[:, 2],
-        facecolors='none', edgecolor='black', linewidth=0.01, alpha=0.1)
+            verts[:, 0], verts[:, 1], verts[:, 2],
+            triangles=faces,
+            edgecolor='black', linewidth=0.01, alpha=0.1,
+            color=(0, 0, 0, 0),  # fully transparent RGBA face color
+            shade=False)
+
 
 
         
